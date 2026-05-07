@@ -1,4 +1,2 @@
-/**
- * 目标相关 UI 与业务组件将放在此目录。
- */
-export {}
+export { ObjectiveDetailView } from '@/features/objectives/ObjectiveDetailView'
+export * from '@/features/objectives/objectiveDetailUtils'

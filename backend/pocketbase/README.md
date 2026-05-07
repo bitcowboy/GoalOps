@@ -56,6 +56,10 @@ npm run pb:migrate
 
 多为**先有记录、后补字段**：旧行里业务列为空。已提供迁移 `pb_migrations/1778075974_goalops_rehydrate_seed_data.js`，会按 PRD 示例 **重新写入** `members` / `objectives` 的固定 id 记录（先停 `serve`，再执行 `npm run pb:migrate`）。
 
+### 前端请求报错：`unknown field "objective"`（blockers / tasks 等）
+
+多为集合里**未创建 `objective` → objectives 的关联字段**。仓库提供修复迁移 `pb_migrations/1778076400_goalops_fix_related_objective_relation.js`。请先**停止** `pocketbase serve`，在项目根目录执行 `npm run pb:migrate`，再重启 `serve`。
+
 ## 目录说明
 
 | 路径 | 说明 |

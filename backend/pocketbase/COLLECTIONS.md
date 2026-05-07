@@ -33,6 +33,13 @@
 | `owner` | relation | → `members`（单选） |
 | `start_date` | date | 开始 |
 | `due_date` | date | 截止 |
+| `display_code` | text | 展示用编码（如 `OBJ-2025-024`） |
+| `background` | text | 背景 / 价值说明 |
+| `success_criteria` | json | 成功标准（字符串数组） |
+| `out_of_scope` | json | 不属于本目标范围（字符串数组） |
+| `phase_timeline` | json | 阶段进展（对象数组，含标题、状态、进度、日期区间） |
+| `next_actions` | json | 行动建议（对象数组） |
+| `progress_delta_percent` | number | 可选，相对上周进度变化（百分点） |
 
 ---
 
@@ -47,6 +54,7 @@
 | `priority` | select | `P0`–`P3` |
 | `predecessor_ids` | json | 前置任务 id 数组（若不用多对多关系） |
 | `estimate_hours` | number | 预估工时（可选） |
+| `due_date` | date | 截止日期（可选） |
 
 ---
 
@@ -57,6 +65,8 @@
 | `title` | text | 名称 |
 | `objective` | relation | → `objectives` |
 | `status` | text | 交付状态描述 |
+| `version` | text | 版本号 |
+| `planned_completion_date` | date | 计划完成日 |
 
 ---
 
@@ -67,6 +77,9 @@
 | `title` | text | 标题 |
 | `url` | url | 链接 |
 | `objective` | relation | → `objectives` |
+| `version` | text | 文档版本 |
+| `doc_status` | text | 文档状态（如草稿 / 评审中 / 已确认） |
+| `owner` | relation | → `members`（可选） |
 
 ---
 
@@ -77,6 +90,8 @@
 | `description` | text | 描述 |
 | `severity` | select | 严重程度 |
 | `objective` | relation | → `objectives` |
+| `owner` | relation | → `members`（可选，责任人） |
+| `target_resolution_date` | date | 目标解决日 |
 
 ---
 

@@ -1,12 +1,38 @@
 @import 'tailwindcss';
 
+/* GoalOps dashboard tokens — align with high-fidelity light enterprise shell */
 @layer base {
   :root {
-    font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+    --goalops-bg: #f4f5f7;
+    --goalops-surface: #ffffff;
+    --goalops-border: #e5e7eb;
+    --goalops-text: #111827;
+    --goalops-text-muted: #6b7280;
+    --goalops-text-subtle: #9ca3af;
+    --goalops-primary: #2563eb;
+    --goalops-primary-soft: #eff6ff;
+    --goalops-success: #16a34a;
+    --goalops-success-soft: #dcfce7;
+    --goalops-warning: #ea580c;
+    --goalops-warning-soft: #ffedd5;
+    --goalops-danger: #dc2626;
+    --goalops-danger-soft: #fee2e2;
+    --goalops-sidebar-active: #f3f4f6;
+    --goalops-radius-card: 14px;
+    --goalops-shadow-card: 0 1px 2px rgb(15 23 42 / 4%), 0 4px 12px rgb(15 23 42 / 6%);
+    font-family:
+      system-ui,
+      'Segoe UI',
+      Roboto,
+      'PingFang SC',
+      'Microsoft YaHei',
+      sans-serif;
   }
 
   body {
     margin: 0;
     min-height: 100dvh;
+    background: var(--goalops-bg);
+    color: var(--goalops-text);
   }
 }

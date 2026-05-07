@@ -1,19 +1,25 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import type { RecordModel } from 'pocketbase'
+import { ObjectiveDetailView } from '@/features/objectives'
 import { pb } from '@/services/pocketbase'
 
-function editorToPlainText(html: string) {
-  if (!html.includes('<')) return html
-  const el = document.createElement('div')
-  el.innerHTML = html
-  return el.textContent?.trim() ?? ''
+function sortDocsByUpdatedDesc(docs: RecordModel[]) {
+  const ms = (r: RecordModel) => {
+    const t = Date.parse(String(r.updated ?? ''))
+    return Number.isNaN(t) ? 0 : t
+  }
+  return [...docs].sort((a, b) => ms(b) - ms(a))
 }
 
 /** 目标详情 — 对应 PRD `/objectives/:id` */
 export function ObjectiveDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const [rec, setRec] = useState<RecordModel | null>(null)
+  const [objective, setObjective] = useState<(RecordModel & { expand?: { owner?: RecordModel } }) | null>(null)
+  const [tasks, setTasks] = useState<RecordModel[]>([])
+  const [deliverables, setDeliverables] = useState<RecordModel[]>([])
+  const [documents, setDocuments] = useState<RecordModel[]>([])
+  const [blockers, setBlockers] = useState<RecordModel[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -25,14 +31,50 @@ export function ObjectiveDetailPage() {
     void (async () => {
       setLoading(true)
       try {
-        const r = await pb.collection('objectives').getOne(id, { expand: 'owner' })
+        const [obj, taskList, delList, docList, blkList] = await Promise.all([
+          pb.collection('objectives').getOne(id, { expand: 'owner' }),
+          pb.collection('tasks').getFullList({
+            filter: `objective="${id}"`,
+            expand: 'assignee',
+            sort: 'due_date',
+          }),
+          pb.collection('deliverables').getFullList({
+            filter: `objective="${id}"`,
+            sort: 'planned_completion_date',
+          }),
+          pb.collection('core_documents').getFullList({
+            filter: `objective="${id}"`,
+            expand: 'owner',
+          }),
+          pb.collection('blockers').getFullList({
+            filter: `objective="${id}"`,
+            expand: 'owner',
+          }),
+        ])
+
+        const severityRank: Record<string, number> = { high: 0, medium: 1, low: 2 }
+        blkList.sort(
+          (a, b) =>
+            (severityRank[String(a.severity ?? '')] ?? 99) - (severityRank[String(b.severity ?? '')] ?? 99),
+        )
+
+        const docsSorted = sortDocsByUpdatedDesc(docList)
+
         if (!cancelled) {
-          setRec(r)
+          setObjective(obj)
+          setTasks(taskList)
+          setDeliverables(delList)
+          setDocuments(docsSorted)
+          setBlockers(blkList)
           setError(null)
         }
       } catch (e) {
         if (!cancelled) {
-          setRec(null)
+          setObjective(null)
+          setTasks([])
+          setDeliverables([])
+          setDocuments([])
+          setBlockers([])
           setError(e instanceof Error ? e.message : String(e))
         }
       } finally {
@@ -45,59 +87,31 @@ export function ObjectiveDetailPage() {
     }
   }, [id])
 
-  const owner = rec?.expand?.owner as RecordModel | undefined
-
   if (!id) {
     return (
-      <p className="text-sm text-amber-700" role="alert">
+      <p className="text-sm text-[var(--goalops-warning)]" role="alert">
         路由缺少目标 ID。
       </p>
     )
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500">
-        <Link className="text-slate-700 underline-offset-4 hover:underline" to="/">
-          ← 返回看板
-        </Link>
-        <span className="font-mono text-xs text-slate-400">{id}</span>
-      </div>
-
-      {loading && <p className="text-sm text-slate-500">加载中…</p>}
+    <div className="space-y-6">
+      {loading && <p className="text-sm text-[var(--goalops-text-muted)]">加载中…</p>}
       {error && (
-        <p className="text-sm text-red-600" role="alert">
+        <p className="text-sm text-[var(--goalops-danger)]" role="alert">
           {error}
         </p>
       )}
-
-      {rec && (
-        <>
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900">{String(rec.name ?? '')}</h1>
-            <p className="mt-1 text-sm text-slate-600">
-              {editorToPlainText(String(rec.definition ?? ''))}
-            </p>
-          </div>
-          <dl className="grid max-w-lg grid-cols-2 gap-2 text-sm">
-            <dt className="text-slate-500">进度</dt>
-            <dd>{rec.progress_percent ?? '—'}%</dd>
-            <dt className="text-slate-500">状态</dt>
-            <dd>{String(rec.status ?? '')}</dd>
-            <dt className="text-slate-500">优先级</dt>
-            <dd>{String(rec.priority ?? '')}</dd>
-            <dt className="text-slate-500">负责人</dt>
-            <dd>{owner ? String(owner.name ?? '') : '—'}</dd>
-            <dt className="text-slate-500">开始</dt>
-            <dd>{String(rec.start_date ?? '') || '—'}</dd>
-            <dt className="text-slate-500">截止</dt>
-            <dd>{String(rec.due_date ?? '') || '—'}</dd>
-          </dl>
-          <p className="text-sm text-slate-500">
-            交付件、任务、卡点、文档等模块可在同页后续加载关联集合。
-          </p>
-        </>
-      )}
+      {!loading && !error && objective ? (
+        <ObjectiveDetailView
+          objective={objective}
+          tasks={tasks}
+          deliverables={deliverables}
+          documents={documents}
+          blockers={blockers}
+        />
+      ) : null}
     </div>
   )
 }
