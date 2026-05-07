@@ -123,9 +123,9 @@ export function DashboardPage() {
       <SectionCard
         title="目标看板"
         action={
-          <button type="button" className="text-sm font-medium text-[var(--goalops-primary)] hover:underline">
+          <Link to="/objectives" className="text-sm font-medium text-[var(--goalops-primary)] hover:underline">
             查看全部
-          </button>
+          </Link>
         }
       >
         <div className="-mx-5 -mb-5 overflow-x-auto">
@@ -240,7 +240,7 @@ export function DashboardPage() {
         </SectionCard>
 
         <SectionCard
-          title="杂事 / 会议"
+          title="日程"
           action={
             <button type="button" className="text-sm font-medium text-[var(--goalops-primary)] hover:underline">
               查看全部

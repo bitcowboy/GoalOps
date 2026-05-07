@@ -6,7 +6,6 @@ import {
   Check,
   ChevronRight,
   Circle,
-  FileText,
   MoreHorizontal,
   Pencil,
   Square,
@@ -21,6 +20,7 @@ import {
   formatDateTime,
   formatDotDate,
   initialsFromName,
+  normalizeObjectiveStatusKey,
   objectiveStatusLabel,
   parseNextActions,
   parsePhaseTimeline,
@@ -34,7 +34,6 @@ type ObjectiveDetailViewProps = {
   objective: RecordModel & { expand?: { owner?: RecordModel } }
   tasks: RecordModel[]
   deliverables: RecordModel[]
-  documents: RecordModel[]
   blockers: RecordModel[]
 }
 
@@ -112,25 +111,6 @@ function PhaseIcon({ step }: { step: ObjectivePhaseStep }) {
   )
 }
 
-function DocStatusPill({ status }: { status: string }) {
-  const s = status.trim()
-  if (s === '已确认')
-    return (
-      <span className="rounded-md bg-[var(--goalops-success-soft)] px-2 py-0.5 text-xs font-medium text-[var(--goalops-success)]">
-        {s}
-      </span>
-    )
-  if (s === '评审中')
-    return (
-      <span className="rounded-md bg-[var(--goalops-warning-soft)] px-2 py-0.5 text-xs font-medium text-[var(--goalops-warning)]">
-        {s}
-      </span>
-    )
-  return (
-    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-[var(--goalops-text-muted)]">{s}</span>
-  )
-}
-
 function DeliverableStatusTag({ status }: { status: string }) {
   const s = status.trim()
   if (s === '进行中')
@@ -160,7 +140,6 @@ export function ObjectiveDetailView({
   objective: obj,
   tasks,
   deliverables,
-  documents,
   blockers,
 }: ObjectiveDetailViewProps) {
   const owner = obj.expand?.owner as RecordModel | undefined
@@ -198,14 +177,13 @@ export function ObjectiveDetailView({
   const phases = parsePhaseTimeline(obj.phase_timeline)
   const nextActions = parseNextActions(obj.next_actions)
 
+  const sk = normalizeObjectiveStatusKey(statusKey)
   const statusTone =
-    statusKey === 'in_progress'
+    sk === 'in_progress' || sk === 'in_review'
       ? ('success' as const)
-      : statusKey === 'at_risk'
+      : sk === 'paused'
         ? ('warning' as const)
-        : statusKey === 'done'
-          ? ('neutral' as const)
-          : ('neutral' as const)
+        : ('neutral' as const)
 
   const priorityTone = priorityPillTone(priorityKey)
 
@@ -239,13 +217,13 @@ export function ObjectiveDetailView({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
+            <Link
+              to={`/objectives/${obj.id}/edit`}
               className="inline-flex items-center gap-2 rounded-lg border border-[var(--goalops-border)] bg-[var(--goalops-surface)] px-3 py-2 text-sm font-medium text-[var(--goalops-text)] shadow-sm hover:bg-slate-50"
             >
               <Pencil className="size-4 text-[var(--goalops-text-muted)]" aria-hidden />
               编辑目标
-            </button>
+            </Link>
             <button
               type="button"
               className="inline-flex items-center gap-2 rounded-lg border border-[var(--goalops-border)] bg-[var(--goalops-surface)] px-3 py-2 text-sm font-medium text-[var(--goalops-text)] shadow-sm hover:bg-slate-50"
@@ -254,7 +232,7 @@ export function ObjectiveDetailView({
               <MoreHorizontal className="size-4 text-[var(--goalops-text-muted)]" aria-hidden />
             </button>
             <Link
-              to="/"
+              to="/objectives"
               className="inline-flex items-center gap-2 rounded-lg bg-[var(--goalops-primary)] px-3 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-95"
             >
               <ArrowLeft className="size-4" aria-hidden />
@@ -394,70 +372,6 @@ export function ObjectiveDetailView({
       {/* Tables */}
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">
-          <SectionCard title="核心文档">
-            <div className="-mx-5 overflow-x-auto">
-              <table className="w-full min-w-[520px] border-collapse text-left text-sm">
-                <thead>
-                  <tr className="border-y border-[var(--goalops-border)] bg-slate-50/80 text-xs font-semibold uppercase tracking-wide text-[var(--goalops-text-muted)]">
-                    <th className="px-5 py-3">文档名称</th>
-                    <th className="px-5 py-3">版本</th>
-                    <th className="px-5 py-3">更新时间</th>
-                    <th className="px-5 py-3">负责人</th>
-                    <th className="px-5 py-3">状态</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--goalops-border)]">
-                  {documents.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-5 py-8 text-center text-[var(--goalops-text-muted)]">
-                        暂无文档
-                      </td>
-                    </tr>
-                  ) : (
-                    documents.map((d) => {
-                      const docOwner = d.expand?.owner as RecordModel | undefined
-                      const dn = docOwner ? String(docOwner.name ?? '') : '—'
-                      const di = initialsFromName(dn)
-                      const st = String(d.doc_status ?? '').trim() || '—'
-                      return (
-                        <tr key={d.id} className="bg-[var(--goalops-surface)]">
-                          <td className="px-5 py-3">
-                            <div className="flex min-w-0 items-center gap-2">
-                              <FileText className="size-4 shrink-0 text-[var(--goalops-primary)]" aria-hidden />
-                              <a
-                                href={String(d.url ?? '#')}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="truncate font-medium text-[var(--goalops-primary)] hover:underline"
-                              >
-                                {String(d.title ?? '')}
-                              </a>
-                            </div>
-                          </td>
-                          <td className="whitespace-nowrap px-5 py-3 text-[var(--goalops-text-muted)]">
-                            {String(d.version ?? '—')}
-                          </td>
-                          <td className="whitespace-nowrap px-5 py-3 text-[var(--goalops-text-muted)]">
-                            {formatDateTime(d.updated)}
-                          </td>
-                          <td className="px-5 py-3">
-                            <div className="flex items-center gap-2">
-                              <Avatar initials={di} color="#64748b" className="size-8 text-[11px]" />
-                              <span className="truncate text-[var(--goalops-text)]">{dn}</span>
-                            </div>
-                          </td>
-                          <td className="px-5 py-3">
-                            <DocStatusPill status={st} />
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </SectionCard>
-
           <SectionCard title="关联任务">
             <div className="-mx-5 overflow-x-auto">
               <table className="w-full min-w-[560px] border-collapse text-left text-sm">

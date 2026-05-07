@@ -2,7 +2,14 @@
  * 与 PRD 实体对齐的前端类型（字段可与 PocketBase collection 不完全一致时再映射）。
  */
 
-export type ObjectiveStatus = 'not_started' | 'in_progress' | 'at_risk' | 'done' | 'cancelled'
+export type ObjectiveStatus =
+  | 'not_started'
+  | 'explore_plan'
+  | 'in_progress'
+  | 'paused'
+  | 'in_review'
+  | 'done'
+  | 'cancelled'
 
 export type PhaseStepStatus = 'done' | 'in_progress' | 'not_started'
 

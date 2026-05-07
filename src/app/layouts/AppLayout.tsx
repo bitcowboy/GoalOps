@@ -4,7 +4,6 @@ import {
   Bell,
   Calendar,
   ChevronDown,
-  FileText,
   LayoutDashboard,
   LayoutGrid,
   ListTodo,
@@ -35,15 +34,10 @@ export function AppLayout() {
             <LayoutDashboard className="size-[18px] shrink-0 opacity-80" />
             概览
           </NavLink>
-          <button
-            type="button"
-            className={`${navRow} w-full cursor-default text-left opacity-70`}
-            disabled
-            aria-disabled="true"
-          >
+          <NavLink to="/objectives" className={({ isActive }) => `${navRow} ${isActive ? navActive : ''}`}>
             <Target className="size-[18px] shrink-0 opacity-80" />
             目标
-          </button>
+          </NavLink>
           <NavLink to="/tasks" className={({ isActive }) => `${navRow} ${isActive ? navActive : ''}`}>
             <ListTodo className="size-[18px] shrink-0 opacity-80" />
             任务
@@ -52,15 +46,6 @@ export function AppLayout() {
             <Users className="size-[18px] shrink-0 opacity-80" />
             团队
           </NavLink>
-          <button
-            type="button"
-            className={`${navRow} w-full cursor-default text-left opacity-70`}
-            disabled
-            aria-disabled="true"
-          >
-            <FileText className="size-[18px] shrink-0 opacity-80" />
-            文档
-          </button>
           <button
             type="button"
             className={`${navRow} w-full cursor-default text-left opacity-70`}
@@ -113,7 +98,7 @@ export function AppLayout() {
               />
               <input
                 type="search"
-                placeholder="搜索目标、任务、文档或成员"
+                placeholder="搜索目标、任务或成员"
                 className="w-full rounded-xl border border-[var(--goalops-border)] bg-slate-50/80 py-2.5 pl-10 pr-4 text-sm text-[var(--goalops-text)] outline-none ring-[var(--goalops-primary)] placeholder:text-[var(--goalops-text-subtle)] focus:bg-[var(--goalops-surface)] focus:ring-2"
               />
             </div>

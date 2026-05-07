@@ -63,8 +63,19 @@ export function parseNextActions(raw: unknown): ObjectiveNextActionJson[] {
 }
 
 export function formatDotDate(iso: string | undefined | null): string {
-  if (!iso) return '—'
-  return iso.replace(/-/g, '.')
+  if (iso == null || iso === '') return '—'
+  const s = String(iso).trim()
+  if (!s) return '—'
+  const isoDate = s.match(/^(\d{4}-\d{2}-\d{2})/)
+  if (isoDate) return isoDate[1]!.replace(/-/g, '.')
+  const d = new Date(s)
+  if (!Number.isNaN(d.getTime())) {
+    const y = d.getFullYear()
+    const m = `${d.getMonth() + 1}`.padStart(2, '0')
+    const day = `${d.getDate()}`.padStart(2, '0')
+    return `${y}.${m}.${day}`
+  }
+  return s.replace(/-/g, '.')
 }
 
 export function formatDateTime(iso: string | undefined | null): string {
@@ -79,15 +90,73 @@ export function formatDateTime(iso: string | undefined | null): string {
   return `${y}-${m}-${day} ${h}:${min}`
 }
 
+const CANONICAL_OBJECTIVE_STATUSES = new Set([
+  'not_started',
+  'explore_plan',
+  'in_progress',
+  'paused',
+  'in_review',
+  'done',
+  'cancelled',
+])
+
+/** 旧版/多种写法 → 7 种 canonical status（英文 code，与 PocketBase 迁移一致） */
+const OBJECTIVE_STATUS_LEGACY_TO_CANONICAL: Record<string, string> = {
+  draft: 'not_started',
+  草稿: 'not_started',
+  not_started: 'not_started',
+  未开始: 'not_started',
+  exploring: 'explore_plan',
+  planning: 'explore_plan',
+  explore_plan: 'explore_plan',
+  探索: 'explore_plan',
+  规划中: 'explore_plan',
+  探索规划: 'explore_plan',
+  in_progress: 'in_progress',
+  进行中: 'in_progress',
+  at_risk: 'in_progress',
+  风险: 'in_progress',
+  paused: 'paused',
+  暂停: 'paused',
+  in_review: 'in_review',
+  验收复盘: 'in_review',
+  验收: 'in_review',
+  done: 'done',
+  完成: 'done',
+  cancelled: 'cancelled',
+  取消: 'cancelled',
+}
+
+/**
+ * 将任意历史 status value 归一为当前 7 档之一；未知值原样返回（仅展示层可用 objectiveStatusLabel）。
+ */
+export function normalizeObjectiveStatusKey(status: string): string {
+  const s = status.trim()
+  if (!s) return 'not_started'
+  if (CANONICAL_OBJECTIVE_STATUSES.has(s)) return s
+  const mapped = OBJECTIVE_STATUS_LEGACY_TO_CANONICAL[s]
+  if (mapped) return mapped
+  return s
+}
+
+/** 写入 PocketBase 前强制为 7 档之一（无法识别的历史值 → 未开始） */
+export function coerceObjectiveStatusForWrite(status: string): string {
+  const k = normalizeObjectiveStatusKey(status)
+  return CANONICAL_OBJECTIVE_STATUSES.has(k) ? k : 'not_started'
+}
+
 export function objectiveStatusLabel(status: string): string {
-  const map: Record<string, string> = {
+  const key = normalizeObjectiveStatusKey(status)
+  const labels: Record<string, string> = {
     not_started: '未开始',
+    explore_plan: '探索规划',
     in_progress: '进行中',
-    at_risk: '风险',
+    paused: '暂停',
+    in_review: '验收',
     done: '完成',
     cancelled: '取消',
   }
-  return map[status] ?? status
+  return labels[key] ?? status
 }
 
 export function taskStatusLabel(status: string): string {

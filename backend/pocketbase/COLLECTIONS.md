@@ -26,11 +26,18 @@
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `name` | text | 名称 |
-| `definition` | text | 定义 |
+| `definition` | editor | 定义（富文本） |
+| `one_sentence_definition` | text | 一句话概括（创建表单） |
 | `progress_percent` | number | 进度 0–100 |
-| `status` | select | 如：`not_started` / `in_progress` / `at_risk` / `done` |
+| `status` | select | 含 `draft`（草稿）、`not_started` / `in_progress` / … |
 | `priority` | select | 如：`P0`–`P3` |
 | `owner` | relation | → `members`（单选） |
+| `participant_ids` | json | 参与成员 id 数组（可选） |
+| `current_phase` | select | 当前阶段（探索 / 规划 / 执行 …） |
+| `risk_level` | select | 风险：`low` / `medium` / `high` |
+| `current_blockers_summary` | text | 卡点摘要（创建表单） |
+| `draft_deliverables` | json | 草稿交付件（名称 + 计划完成日） |
+| `draft_core_documents` | json | 草稿核心文档（名称、版本、计划完成日） |
 | `start_date` | date | 开始 |
 | `due_date` | date | 截止 |
 | `display_code` | text | 展示用编码（如 `OBJ-2025-024`） |
