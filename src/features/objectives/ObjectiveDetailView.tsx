@@ -370,7 +370,7 @@ export function ObjectiveDetailView({
       </SectionCard>
 
       {/* Tables */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="space-y-6">
         <div className="space-y-6">
           <SectionCard title="关联任务">
             <div className="-mx-5 overflow-x-auto">
@@ -430,7 +430,7 @@ export function ObjectiveDetailView({
           </SectionCard>
         </div>
 
-        <div className="space-y-6">
+        <div className="grid gap-6 lg:grid-cols-2">
           <SectionCard title="核心交付件">
             <div className="-mx-5 overflow-x-auto">
               <table className="w-full min-w-[480px] border-collapse text-left text-sm">
