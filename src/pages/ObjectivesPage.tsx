@@ -62,17 +62,19 @@ export function ObjectivesPage() {
   }, [])
 
   useEffect(() => {
-    void reload()
+    queueMicrotask(() => void reload())
   }, [reload])
 
   useEffect(() => {
-    const s = location.state as ObjectivesLocationState | undefined
-    if (s?.objectiveCreated) {
-      const name =
-        typeof s.objectiveName === 'string' && s.objectiveName.trim() ? s.objectiveName.trim() : ''
-      setCreateSuccessBanner(name ? `已成功创建目标「${name}」。` : '已成功创建目标。')
-      navigate(location.pathname, { replace: true, state: {} })
-    }
+    queueMicrotask(() => {
+      const s = location.state as ObjectivesLocationState | undefined
+      if (s?.objectiveCreated) {
+        const name =
+          typeof s.objectiveName === 'string' && s.objectiveName.trim() ? s.objectiveName.trim() : ''
+        setCreateSuccessBanner(name ? `已成功创建目标「${name}」。` : '已成功创建目标。')
+        navigate(location.pathname, { replace: true, state: {} })
+      }
+    })
   }, [location.pathname, location.state, navigate])
 
   const kpis = data?.kpis
@@ -185,12 +187,25 @@ export function ObjectivesPage() {
             ) : null}
           </div>
         </MetricCard>
-        <MetricCard label="平均进度">
+        <MetricCard label="平均进度 / KR">
           <div className="flex items-center justify-between gap-2">
             <div>
               <div className="text-3xl font-semibold tabular-nums">
-                {kpis ? `${kpis.avg_progress_pct}%` : loading ? '…' : '—'}
+                {kpis
+                  ? kpis.avg_kr_completion_pct != null
+                    ? `${kpis.avg_kr_completion_pct}%`
+                    : `${kpis.avg_progress_pct}%`
+                  : loading
+                    ? '…'
+                    : '—'}
               </div>
+              {kpis ? (
+                <div className="mt-1 text-xs text-[var(--goalops-text-muted)]">
+                  {kpis.avg_kr_completion_pct != null
+                    ? `KR 平均 · 全部 ${kpis.avg_progress_pct}% 展示进度`
+                    : '无 KR 数据 · 使用目标进度字段'}
+                </div>
+              ) : null}
               {kpis ? (
                 <div className="mt-1 flex items-center gap-1 text-xs font-medium text-[var(--goalops-success)]">
                   <TrendingUp className="size-3.5" aria-hidden />
@@ -222,6 +237,8 @@ export function ObjectivesPage() {
                 <tr className="border-b border-[var(--goalops-border)] bg-slate-50/80 text-xs font-semibold uppercase tracking-wide text-[var(--goalops-text-muted)]">
                   <th className="whitespace-nowrap px-5 py-3">目标</th>
                   <th className="whitespace-nowrap px-5 py-3">定义</th>
+                  <th className="whitespace-nowrap px-5 py-3">KR</th>
+                  <th className="whitespace-nowrap px-5 py-3">任务</th>
                   <th className="whitespace-nowrap px-5 py-3">进度</th>
                   <th className="whitespace-nowrap px-5 py-3">健康度</th>
                   <th className="whitespace-nowrap px-5 py-3">优先级</th>
@@ -250,12 +267,36 @@ export function ObjectivesPage() {
                     <td className="max-w-[220px] px-5 py-4 text-[var(--goalops-text-muted)]">
                       <span className="line-clamp-2">{row.definition}</span>
                     </td>
+                    <td className="whitespace-nowrap px-5 py-4 text-xs text-[var(--goalops-text-muted)]">
+                      {row.kr_total === 0 ? (
+                        <span className="text-[var(--goalops-warning)]">未定义</span>
+                      ) : (
+                        <>
+                          <span className="font-medium text-[var(--goalops-text)]">
+                            {row.kr_completed} / {row.kr_total}
+                          </span>
+                          {row.kr_percent != null ? (
+                            <span className="ml-1 tabular-nums">· {row.kr_percent}%</span>
+                          ) : null}
+                        </>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-4 text-xs text-[var(--goalops-text-muted)]">
+                      {row.task_total === 0 ? (
+                        '—'
+                      ) : (
+                        <>
+                          {row.task_completed} / {row.task_total} ·{' '}
+                          {Math.round((row.task_completed / row.task_total) * 100)}%
+                        </>
+                      )}
+                    </td>
                     <td className="px-5 py-4">
                       <div className="w-[140px] space-y-1">
                         <div className="flex justify-between text-xs text-[var(--goalops-text-muted)]">
-                          <span>{row.progress_percent}%</span>
+                          <span>{row.progress_display_pct}%</span>
                         </div>
-                        <ProgressBar value={row.progress_percent} />
+                        <ProgressBar value={row.progress_display_pct} />
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-5 py-4">

@@ -18,6 +18,20 @@
 | `role` | text | 角色 |
 | `team` | text | 小组 |
 | `weekly_available_hours` | number | 每周可用工时 |
+| `status` | select | **v0.3.3** `active`（在岗） / `inactive`（停用）；历史数据空值前端视为 `active` |
+
+---
+
+## `key_results`（关键结果，Checkbox）**v0.3.3**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `objective` | relation | → `objectives`，必填，随目标级联删除 |
+| `name` | text | KR 描述 |
+| `is_completed` | bool | 是否完成 |
+| `owner` | relation | → `members`，可选 |
+| `note` | text | 备注 |
+| `sort_order` | number | 展示顺序（整数，可选） |
 
 ---
 
@@ -33,18 +47,17 @@
 | `priority` | select | 如：`P0`–`P3` |
 | `owner` | relation | → `members`（单选） |
 | `participant_ids` | json | 参与成员 id 数组（可选） |
-| `current_phase` | select | 当前阶段（探索 / 规划 / 执行 …） |
 | `risk_level` | select | 风险：`low` / `medium` / `high` |
 | `current_blockers_summary` | text | 卡点摘要（创建表单） |
-| `draft_deliverables` | json | 草稿交付件（名称 + 计划完成日） |
-| `draft_core_documents` | json | 草稿核心文档（名称、版本、计划完成日） |
+| `draft_deliverables` | json | 历史字段，当前最小化 OKR 表单不展示 |
+| `draft_core_documents` | json | 历史字段，当前最小化 OKR 表单不展示 |
 | `start_date` | date | 开始 |
 | `due_date` | date | 截止 |
 | `display_code` | text | 展示用编码（如 `OBJ-2025-024`） |
-| `background` | text | 背景 / 价值说明 |
-| `success_criteria` | json | 成功标准（字符串数组） |
+| `background` | text | 目标描述 |
+| `success_criteria` | json | 历史字段，当前最小化 OKR 不展示且保存时写空数组 |
 | `out_of_scope` | json | 不属于本目标范围（字符串数组） |
-| `phase_timeline` | json | 阶段进展（对象数组，含标题、状态、进度、日期区间） |
+| `phase_timeline` | json | 历史字段，当前最小化 OKR 详情页不展示 |
 | `next_actions` | json | 行动建议（对象数组） |
 | `progress_delta_percent` | number | 可选，相对上周进度变化（百分点） |
 
@@ -56,6 +69,7 @@
 |------|------|------|
 | `title` | text | 标题 |
 | `objective` | relation | → `objectives`，**必填** |
+| `key_result` | relation | → `key_results`，**可选** |
 | `assignee` | relation | → `members` |
 | `status` | select | 对应 PRD 流转：`pending`→…→`done` |
 | `priority` | select | `P0`–`P3` |
@@ -99,17 +113,6 @@
 | `objective` | relation | → `objectives` |
 | `owner` | relation | → `members`（可选，责任人） |
 | `target_resolution_date` | date | 目标解决日 |
-
----
-
-## `misc_work`（会议 / 杂事）
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `title` | text | 标题 |
-| `member` | relation | → `members` |
-| `kind` | select | 如：`meeting` / `ad_hoc` |
-| `hours` | number | 占用工时 |
 
 ---
 

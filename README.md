@@ -1,21 +1,33 @@
-# GoalOps / 部门项目管理（MVP 骨架）
+# GoalOps
 
-围绕部门目标、交付件、任务、人员占用与会议杂事的管理闭环，详见产品文档 [**PRD v0.1**](Doc/department_project_management_prd_v_0_1.md)。
+GoalOps 是一个部门目标与执行管理 Web MVP，围绕最小化 OKR、任务、卡点和人员占用建立闭环。产品需求见 [最新 PRD](Doc/goalops_prd.md)。
+
+当前版本聚焦目标、KR、任务和人员占用。
 
 ## 技术栈
 
 | 层级 | 选型 |
-|------|------|
+| --- | --- |
 | 前端 | React 19、Vite 8、TypeScript、Tailwind CSS v4、Zustand |
-| 数据 | [PocketBase](https://pocketbase.io/)（本地或自建部署） |
+| 数据 | PocketBase |
 | 路由 | react-router-dom |
-| 图表 / 图标 | Recharts、Lucide（依赖已添加，业务中按需使用） |
+| 图表 / 图标 | Recharts、lucide-react |
 
-## MVP 边界
+## 当前路由
 
-- **无登录 / 无复杂权限**：当前仓库通过迁移脚本为业务集合配置了访客可读写的 API 规则（`1=1`，仅适合**内网开发**；上线前必须在 Admin 中改为鉴权规则）。
-- 四个主路由与 PRD 对齐：`/`、`/objectives/:id`、`/tasks`、`/people`（另含可选 `/settings`）。
-- 首页与目标详情已接入 PocketBase 的 **`objectives`** 集合（列表 + 单条 + `expand: owner`）。
+```text
+/                              首页总览
+/objectives                    目标列表
+/objectives/new                创建目标
+/objectives/:id                目标详情
+/objectives/:id/edit           编辑目标
+/tasks                         任务列表
+/tasks/new                     创建任务
+/tasks/:id/edit                编辑任务
+/people                        人员占用看板
+/people/manage                 团队成员管理
+/settings                      基础设置
+```
 
 ## 快速开始
 
@@ -25,42 +37,33 @@
 npm install
 ```
 
-### 2. 放置 PocketBase 与执行迁移
+### 2. 准备 PocketBase
 
-将对应平台的 `pocketbase` / `pocketbase.exe` 放在 `backend/pocketbase/`。
+把对应平台的 `pocketbase` / `pocketbase.exe` 放在 `backend/pocketbase/`。
 
-**先应用迁移**（创建集合、PRD 示例数据、以及开发用开放 API 规则），再启动服务：
+先应用迁移：
 
 ```powershell
 npm run pb:migrate
 ```
 
-或在 `backend/pocketbase` 下：
+或在 `backend/pocketbase` 中执行：
 
 ```powershell
 .\pocketbase.exe migrate up
 ```
 
-迁移说明与集合字段见 [backend/pocketbase/COLLECTIONS.md](backend/pocketbase/COLLECTIONS.md)；种子数据逻辑见 `pb_migrations/*_seed*.js`（记录 id 满足 PocketBase **15 位 `[a-z0-9]`** 约束）。
+迁移会创建业务集合、写入示例数据、开放本地开发 API 规则，并清理旧版废弃集合。
 
 ### 3. 启动 PocketBase
-
-根目录脚本：
 
 ```powershell
 npm run pb:serve
 ```
 
-或：
+默认 Admin UI：`http://127.0.0.1:8090/_/`。
 
-```powershell
-cd backend/pocketbase
-.\pocketbase.exe serve
-```
-
-默认 Admin UI：`http://127.0.0.1:8090/_/`（首次需创建 superuser）。
-
-### 4. 配置前端环境变量（可选）
+### 4. 配置前端环境变量
 
 ```powershell
 Copy-Item .env.example .env
@@ -74,8 +77,6 @@ Copy-Item .env.example .env
 npm run dev
 ```
 
-在浏览器打开应用：看板页应列出 4 条示例目标，并可进入详情。
-
 ### 6. 构建
 
 ```powershell
@@ -83,28 +84,37 @@ npm run build
 npm run preview
 ```
 
-## 目录结构（摘要）
+## 目录结构
 
 ```text
 src/
   app/           路由与布局
-  pages/         页面（看板、目标详情、任务、人员、设置）
-  components/    通用展示组件（占位）
-  features/      领域功能模块（占位）
+  pages/         页面
+  components/    通用展示组件
+  features/      领域功能模块
   store/         Zustand 状态
-  services/      PocketBase 客户端与后续数据访问封装
+  services/      PocketBase 客户端
   models/        TypeScript 实体类型
-  utils/         阻塞检测、占用率、风险规则等纯函数（占位）
-  styles/        样式说明（全局入口为 index.css）
 backend/
-  pocketbase/    可执行文件、pb_data、pb_migrations、seed 说明
-Doc/             PRD 与产品文档
+  pocketbase/    PocketBase 迁移、集合说明和种子说明
+Doc/
+  goalops_prd.md 当前唯一 PRD
 ```
 
-## 推荐实现顺序
+## 后端集合
 
-与 PRD **§17 推荐开发顺序** 一致：布局 → 数据模型 → mock/seed → Zustand → 各页面 → PocketBase 持久化 → 规则与 UI 打磨。
+详见 [backend/pocketbase/COLLECTIONS.md](backend/pocketbase/COLLECTIONS.md)。
+
+当前业务集合：
+
+```text
+members
+objectives
+key_results
+tasks
+blockers
+```
 
 ## License
 
-Private / internal — 按团队策略填写。
+Private / internal.

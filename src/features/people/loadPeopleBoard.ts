@@ -24,8 +24,6 @@ export type PeopleBoardRow = {
   mainObjectiveDotColor: string
   activeTaskCount: number
   hoursObjectiveWork: number
-  hoursMeeting: number
-  hoursMisc: number
   utilizationPercent: number
   weeklyDots: PeopleWeeklyDayLoad[]
   risk: PeopleRiskStatus
@@ -33,7 +31,6 @@ export type PeopleBoardRow = {
 
 export type PeopleInsightKind =
   | 'personnel_overload'
-  | 'meeting_overload'
   | 'multi_objective'
   | 'key_personnel'
 
@@ -60,7 +57,6 @@ export type PeopleBoardKpis = {
   overloadedPct: number
   criticalPathOwnersCount: number
   criticalPathOwnersPct: number
-  weeklyMeetingHoursTotal: number
 }
 
 export type PeopleBoardPayload = {
@@ -109,11 +105,11 @@ function buildObjectiveMap(objectives: RecordModel[]): Map<string, RecordModel> 
 }
 
 /**
- * Loads members, tasks, objectives, misc_work and aggregates utilisation metrics for `/people`.
+ * Loads members, tasks, objectives and aggregates utilisation metrics for `/people`.
  */
 export async function fetchPeopleBoard(): Promise<PeopleBoardPayload> {
   const req = `people_board_${Date.now()}`
-  const [memberRecords, taskRecordsRaw, objectiveRecordsRaw, miscRecordsRaw] = await Promise.all([
+  const [memberRecords, taskRecordsRaw, objectiveRecordsRaw] = await Promise.all([
     pb.collection('members').getFullList({ sort: 'name', requestKey: `${req}_m`, batch: 500 }),
     pb.collection('tasks').getFullList({
       expand: 'objective,assignee',
@@ -125,10 +121,6 @@ export async function fetchPeopleBoard(): Promise<PeopleBoardPayload> {
       requestKey: `${req}_o`,
       batch: 500,
     }),
-    pb
-      .collection('misc_work')
-      .getFullList({ expand: 'member', requestKey: `${req}_w`, batch: 500 })
-      .catch(() => [] as RecordModel[]),
   ])
 
   const taskRecords = taskRecordsRaw as RecordModel[]
@@ -150,23 +142,6 @@ export async function fetchPeopleBoard(): Promise<PeopleBoardPayload> {
     inner.set(oid, (inner.get(oid) ?? 0) + h)
     taskCountsByMember.set(assigneeId, (taskCountsByMember.get(assigneeId) ?? 0) + 1)
   }
-
-  const meetingHoursByMember = new Map<string, number>()
-  const miscHoursByMember = new Map<string, number>()
-  for (const w of miscRecordsRaw as RecordModel[]) {
-    const mid = relationId(w.member)
-    if (!mid) continue
-    const kind = str(w, 'kind')
-    const h = Math.max(0, num(w, 'hours'))
-    if (kind === 'meeting') {
-      meetingHoursByMember.set(mid, (meetingHoursByMember.get(mid) ?? 0) + h)
-    } else {
-      miscHoursByMember.set(mid, (miscHoursByMember.get(mid) ?? 0) + h)
-    }
-  }
-
-  let weeklyMeetingHoursTotal = 0
-  for (const [, h] of meetingHoursByMember) weeklyMeetingHoursTotal += h
 
   /** 关键路径负责人：P0 未完成目标负责人，或处于风险中的 P1 目标负责人 */
   const criticalOwnerIds = new Set<string>()
@@ -190,10 +165,7 @@ export async function fetchPeopleBoard(): Promise<PeopleBoardPayload> {
     const hoursObjectiveWork = round1(
       Array.from(taskHoursByMember.get(memberId)?.values() ?? []).reduce((a, b) => a + b, 0),
     )
-    const hoursMeeting = round1(meetingHoursByMember.get(memberId) ?? 0)
-    const hoursMisc = round1(miscHoursByMember.get(memberId) ?? 0)
-
-    const totalAllocated = round1(hoursObjectiveWork + hoursMeeting + hoursMisc)
+    const totalAllocated = hoursObjectiveWork
     const utilizationPercent =
       weeklyAvailable <= 0 ? (totalAllocated > 0 ? 999 : 0) : Math.round((totalAllocated / weeklyAvailable) * 100)
 
@@ -249,8 +221,6 @@ export async function fetchPeopleBoard(): Promise<PeopleBoardPayload> {
       mainObjectiveDotColor: mainObjectiveId ? objectiveDotColor(mainObjectiveId) : '#94a3b8',
       activeTaskCount,
       hoursObjectiveWork,
-      hoursMeeting,
-      hoursMisc,
       utilizationPercent,
       weeklyDots: syntheticWeeklyLoads(memberId, utilizationPercent),
       risk,
@@ -268,15 +238,9 @@ export async function fetchPeopleBoard(): Promise<PeopleBoardPayload> {
     overloadedPct: safePercent(overloadedCount, teamSize),
     criticalPathOwnersCount: criticalOwnerIds.size,
     criticalPathOwnersPct: safePercent(criticalOwnerIds.size, teamSize),
-    weeklyMeetingHoursTotal: round1(weeklyMeetingHoursTotal),
   }
 
   const overloadMembers = rows.filter((r) => r.risk === 'overload')
-  const meetingOverloadMembers = rows.filter((r) => {
-    const t = round1(r.hoursObjectiveWork + r.hoursMeeting + r.hoursMisc)
-    return t > 0 && r.hoursMeeting / t > 0.4
-  })
-
   const multiObjMembers = rows.filter((r) => {
     const oidSet = new Set<string>()
     for (const t of taskRecords) {
@@ -310,13 +274,6 @@ export async function fetchPeopleBoard(): Promise<PeopleBoardPayload> {
       countLabel: `${overloadMembers.length}人 · 占比 ${safePercent(overloadMembers.length, teamSize)}%`,
       description: '占用率超过 100%，存在交付风险',
       members: toSamples(overloadMembers.sort((a, b) => b.utilizationPercent - a.utilizationPercent)),
-    },
-    {
-      kind: 'meeting_overload',
-      title: '会议过载',
-      countLabel: `${meetingOverloadMembers.length}人 · 占比 ${safePercent(meetingOverloadMembers.length, teamSize)}%`,
-      description: '会议时间超过 40%，影响专注时间',
-      members: toSamples(meetingOverloadMembers.sort((a, b) => b.hoursMeeting - a.hoursMeeting)),
     },
     {
       kind: 'multi_objective',

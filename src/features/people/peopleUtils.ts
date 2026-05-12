@@ -39,11 +39,14 @@ export function syntheticWeeklyLoads(memberId: string, utilizationPercent: numbe
   const out: PeopleWeeklyDayLoad[] = []
   for (let d = 0; d < 7; d++) {
     const jitter = hashBucket(`${memberId}-${d}`, 3)
-    let level = 0
-    if (utilizationPercent > 100) level = 2
-    else if (utilizationPercent >= 90) level = 1 + (jitter > 0 ? 1 : 0)
-    else if (utilizationPercent >= 70) level = jitter
-    else level = Math.min(jitter, 1)
+    const level =
+      utilizationPercent > 100
+        ? 2
+        : utilizationPercent >= 90
+          ? 1 + (jitter > 0 ? 1 : 0)
+          : utilizationPercent >= 70
+            ? jitter
+            : Math.min(jitter, 1)
     out.push(level >= 2 ? 'high' : level === 1 ? 'mid' : 'low')
   }
   return out

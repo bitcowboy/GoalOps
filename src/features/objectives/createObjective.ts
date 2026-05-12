@@ -6,6 +6,7 @@ import {
   objectiveStatusLabel,
   parseStringArray,
 } from '@/features/objectives/objectiveDetailUtils'
+import { krCompletionFromRows } from '@/features/objectives/keyResults'
 import { pb } from '@/services/pocketbase'
 
 export type ObjectiveOwnerOption = {
@@ -159,6 +160,43 @@ export type ObjectiveDraftCoreDocumentRow = {
   url: string
 }
 
+/** 写入 PocketBase key_results 的一行（name 非空才会落库） */
+export type KeyResultInputRow = {
+  id?: string
+  name: string
+  is_completed: boolean
+  owner_id?: string
+  note?: string
+  sort_order: number
+}
+
+/** 表单中的 KR 行（含本地 tempId） */
+export type KeyResultFormRow = {
+  tempId: string
+  id?: string
+  name: string
+  is_completed: boolean
+  owner_id: string
+  note: string
+  sort_order: number
+}
+
+export function newKeyResultFormRow(partial?: Partial<KeyResultFormRow>): KeyResultFormRow {
+  const rid =
+    typeof globalThis.crypto !== 'undefined' && 'randomUUID' in globalThis.crypto
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return {
+    tempId: partial?.tempId ?? `kr-${rid}`,
+    id: partial?.id,
+    name: partial?.name ?? '',
+    is_completed: partial?.is_completed ?? false,
+    owner_id: partial?.owner_id ?? '',
+    note: partial?.note ?? '',
+    sort_order: partial?.sort_order ?? 0,
+  }
+}
+
 export type CreateObjectiveInput = {
   name: string
   owner: string
@@ -187,6 +225,8 @@ export type CreateObjectiveInput = {
   action_suggestions_text: string
   draft_deliverables: ObjectiveDraftDeliverableRow[]
   draft_core_documents: ObjectiveDraftCoreDocumentRow[]
+  /** 关键结果 Checkbox；空数组表示无 KR */
+  key_results: KeyResultInputRow[]
 }
 
 export type CreatedObjectiveMeta = {
@@ -208,8 +248,9 @@ export function pbValueToDateInput(raw: unknown): string {
   return `${y}-${mo}-${day}`
 }
 
-export type ObjectiveFormDraftFields = Omit<CreateObjectiveInput, 'progress_percent'> & {
+export type ObjectiveFormDraftFields = Omit<CreateObjectiveInput, 'progress_percent' | 'key_results'> & {
   progress_percent: string
+  key_results: KeyResultFormRow[]
 }
 
 /** 将编辑/创建表单草稿转为 API 写入结构（progress_percent 由字符串解析）。 */
@@ -219,6 +260,17 @@ export function objectiveDraftToCreateInput(draft: ObjectiveFormDraftFields): Cr
   if (progress_percent !== null && (Number.isNaN(progress_percent) || progress_percent < 0 || progress_percent > 100)) {
     throw new Error('进度需在 0–100 之间')
   }
+  const key_results = draft.key_results
+    .filter((r) => r.name.trim().length > 0)
+    .map((r, i) => ({
+      id: r.id,
+      name: r.name.trim(),
+      is_completed: r.is_completed,
+      owner_id: r.owner_id.trim() || undefined,
+      note: r.note.trim() || undefined,
+      sort_order: typeof r.sort_order === 'number' ? r.sort_order : i,
+    }))
+
   return {
     name: draft.name,
     owner: draft.owner,
@@ -227,7 +279,7 @@ export function objectiveDraftToCreateInput(draft: ObjectiveFormDraftFields): Cr
     definition: draft.definition,
     one_sentence_definition: draft.one_sentence_definition,
     background: draft.background,
-    success_criteria: draft.success_criteria,
+    success_criteria: '',
     out_of_scope: draft.out_of_scope,
     start_date: draft.start_date,
     due_date: draft.due_date,
@@ -244,6 +296,7 @@ export function objectiveDraftToCreateInput(draft: ObjectiveFormDraftFields): Cr
       title: r.title,
       url: r.url ?? '',
     })),
+    key_results,
   }
 }
 
@@ -334,7 +387,7 @@ export function objectiveRecordToFormDraft(record: RecordModel): ObjectiveFormDr
     definition: editorToPlainText(String(record.definition ?? '')),
     one_sentence_definition: String(record.one_sentence_definition ?? '').trim(),
     background: String(record.background ?? ''),
-    success_criteria: linesFieldFromRecord(record, 'success_criteria'),
+    success_criteria: '',
     out_of_scope: linesFieldFromRecord(record, 'out_of_scope'),
     start_date: pbValueToDateInput(record.start_date),
     due_date: pbValueToDateInput(record.due_date),
@@ -345,6 +398,89 @@ export function objectiveRecordToFormDraft(record: RecordModel): ObjectiveFormDr
     action_suggestions_text: parseNextActionsToLines(record),
     draft_deliverables: parseDraftDeliverables(record),
     draft_core_documents: parseDraftCoreDocs(record),
+    key_results: [],
+  }
+}
+
+export function keyResultRecordsToFormRows(records: RecordModel[]): KeyResultFormRow[] {
+  const sorted = [...records].sort((a, b) => {
+    const sa = typeof a.sort_order === 'number' ? a.sort_order : 0
+    const sb = typeof b.sort_order === 'number' ? b.sort_order : 0
+    return sa - sb || String(a.name ?? '').localeCompare(String(b.name ?? ''), 'zh-CN')
+  })
+  return sorted.map((r, idx) => ({
+    tempId: r.id,
+    id: r.id,
+    name: String(r.name ?? ''),
+    is_completed: Boolean(r.is_completed),
+    owner_id: typeof r.owner === 'string' ? r.owner : '',
+    note: String(r.note ?? ''),
+    sort_order: typeof r.sort_order === 'number' ? r.sort_order : idx,
+  }))
+}
+
+export async function fetchKeyResultsForObjective(objectiveId: string): Promise<RecordModel[]> {
+  return pb.collection('key_results').getFullList({
+    filter: `objective="${objectiveId}"`,
+    sort: 'sort_order,name',
+    batch: 300,
+    requestKey: `kr_obj_${objectiveId}_${Date.now()}`,
+  })
+}
+
+export async function recomputeObjectiveProgressFromKeyResults(objectiveId: string): Promise<number | null> {
+  try {
+    const list = await fetchKeyResultsForObjective(objectiveId)
+    return krCompletionFromRows(
+      list.map((r) => ({ name: String(r.name ?? ''), is_completed: Boolean(r.is_completed) })),
+    ).percent
+  } catch {
+    return null
+  }
+}
+
+async function syncKeyResultsForObjective(objectiveId: string, rows: KeyResultInputRow[]): Promise<void> {
+  const cleaned = rows
+    .map((r, i) => ({ ...r, sort_order: typeof r.sort_order === 'number' ? r.sort_order : i }))
+    .filter((r) => r.name.trim().length > 0)
+
+  let existing: RecordModel[]
+  try {
+    existing = await fetchKeyResultsForObjective(objectiveId)
+  } catch {
+    return
+  }
+
+  const wantedIds = new Set(cleaned.map((r) => r.id).filter(Boolean) as string[])
+  for (const ex of existing) {
+    if (!wantedIds.has(ex.id)) {
+      await pb.collection('key_results').delete(ex.id)
+    }
+  }
+
+  const existingIds = new Set(existing.map((e) => e.id))
+
+  for (const row of cleaned) {
+    const payload: Record<string, unknown> = {
+      name: row.name.trim(),
+      is_completed: row.is_completed,
+      sort_order: row.sort_order,
+      note: row.note ?? '',
+    }
+    if (row.owner_id?.trim()) {
+      payload.owner = row.owner_id.trim()
+    } else {
+      payload.owner = null
+    }
+
+    if (row.id && existingIds.has(row.id)) {
+      await pb.collection('key_results').update(row.id, payload)
+    } else {
+      await pb.collection('key_results').create({
+        ...payload,
+        objective: objectiveId,
+      })
+    }
   }
 }
 
@@ -376,15 +512,18 @@ function buildObjectiveWritePayload(input: CreateObjectiveInput): Record<string,
   if (start) body.start_date = start
   if (due) body.due_date = due
 
-  if (input.progress_percent !== null && input.progress_percent !== undefined) {
+  const krNamed = input.key_results.filter((r) => r.name.trim().length > 0)
+  const krAgg = krCompletionFromRows(krNamed.map((r) => ({ name: r.name, is_completed: r.is_completed })))
+  if (krAgg.percent !== null) {
+    body.progress_percent = clampPercent(krAgg.percent)
+  } else if (input.progress_percent !== null && input.progress_percent !== undefined) {
     body.progress_percent = clampPercent(input.progress_percent)
   }
 
   body.background = input.background.trim()
 
-  const successLines = normalizeObjectiveLinesField(input.success_criteria)
   const outLines = normalizeObjectiveLinesField(input.out_of_scope)
-  body.success_criteria = successLines.length > 0 ? successLines : []
+  body.success_criteria = []
   body.out_of_scope = outLines.length > 0 ? outLines : []
 
   const participantIds = input.participant_ids.map((id) => id.trim()).filter(Boolean)
@@ -434,6 +573,11 @@ export async function createObjective(input: CreateObjectiveInput): Promise<Crea
   validateObjectiveInput(input)
   const body = buildObjectiveWritePayload(input)
   const rec = await pb.collection('objectives').create(body)
+  await syncKeyResultsForObjective(rec.id, input.key_results)
+  const pct = await recomputeObjectiveProgressFromKeyResults(rec.id)
+  if (pct !== null) {
+    await pb.collection('objectives').update(rec.id, { progress_percent: clampPercent(pct) })
+  }
   const name = input.name.trim()
   return {
     id: rec.id,
@@ -448,6 +592,11 @@ export async function updateObjective(
   validateObjectiveInput(input)
   const body = buildObjectiveWritePayload(input)
   const rec = await pb.collection('objectives').update(objectiveId, body)
+  await syncKeyResultsForObjective(objectiveId, input.key_results)
+  const pct = await recomputeObjectiveProgressFromKeyResults(objectiveId)
+  if (pct !== null) {
+    await pb.collection('objectives').update(objectiveId, { progress_percent: clampPercent(pct) })
+  }
   const name = input.name.trim()
   return {
     id: rec.id,

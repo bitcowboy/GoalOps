@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Calendar,
   ListChecks,
@@ -90,6 +91,7 @@ const tasksUiInitial = {
   assigneeId: '',
   statusFilter: '',
   priorityFilter: '',
+  keyResultFilter: '',
   deadlineUntil: '',
   blockedOnly: false,
   mineOnly: false,
@@ -103,6 +105,7 @@ type TasksUiState = {
   assigneeId: string
   statusFilter: string
   priorityFilter: string
+  keyResultFilter: string
   deadlineUntil: string
   blockedOnly: boolean
   mineOnly: boolean
@@ -155,6 +158,7 @@ export function TasksPage() {
     const subPromise = Promise.all([
       pb.collection('tasks').subscribe('*', () => void fetchSilent()),
       pb.collection('blockers').subscribe('*', () => void fetchSilent()),
+      pb.collection('key_results').subscribe('*', () => void fetchSilent()),
     ])
 
     return () => {
@@ -162,6 +166,7 @@ export function TasksPage() {
       void subPromise.then((uns) => uns.forEach((u) => void u?.())).catch(() => {})
       void pb.collection('tasks').unsubscribe('*')
       void pb.collection('blockers').unsubscribe('*')
+      void pb.collection('key_results').unsubscribe('*')
     }
   }, [load])
 
@@ -183,12 +188,25 @@ export function TasksPage() {
     assigneeId,
     statusFilter,
     priorityFilter,
+    keyResultFilter,
     deadlineUntil,
     blockedOnly,
     mineOnly,
     page,
     pageSize,
   } = ui
+
+  const rows = useMemo(() => snapshot?.rows ?? EMPTY_ROWS, [snapshot])
+
+  const keyResultPicklist = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const t of rows) {
+      if (t.keyResultId && t.keyResultName) {
+        m.set(t.keyResultId, t.keyResultName)
+      }
+    }
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1], 'zh-CN'))
+  }, [rows])
 
   const objectiveOptions = useMemo(() => {
     const base = snapshot?.objectives ?? []
@@ -203,8 +221,6 @@ export function TasksPage() {
     ]
   }, [snapshot?.members])
 
-  const rows = useMemo(() => snapshot?.rows ?? EMPTY_ROWS, [snapshot])
-
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
     return rows.filter((t) => {
@@ -217,11 +233,20 @@ export function TasksPage() {
       if (assigneeId && t.assigneeId !== assigneeId) return false
       if (statusFilter && t.pbStatus !== statusFilter) return false
       if (priorityFilter && t.priority !== priorityFilter) return false
+      if (keyResultFilter === '__linked__' && !t.keyResultId) return false
+      if (keyResultFilter === '__none__' && t.keyResultId) return false
+      if (
+        keyResultFilter &&
+        keyResultFilter !== '__linked__' &&
+        keyResultFilter !== '__none__' &&
+        t.keyResultId !== keyResultFilter
+      )
+        return false
       if (deadlineUntil) {
         if (!t.dueIso || t.dueIso > deadlineUntil) return false
       }
       if (q) {
-        const haystack = `${t.title} ${t.objectiveName} ${t.assigneeName} ${t.prerequisiteLabel ?? ''}`.toLowerCase()
+        const haystack = `${t.title} ${t.objectiveName} ${t.assigneeName} ${t.prerequisiteLabel ?? ''} ${t.keyResultName}`.toLowerCase()
         if (!haystack.includes(q)) return false
       }
       return true
@@ -233,6 +258,7 @@ export function TasksPage() {
     assigneeId,
     statusFilter,
     priorityFilter,
+    keyResultFilter,
     deadlineUntil,
     blockedOnly,
     mineOnly,
@@ -285,8 +311,11 @@ export function TasksPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-[var(--goalops-text)]">任务</h1>
           <p className="mt-1 text-sm text-[var(--goalops-text-muted)]">
-            数据源：PocketBase（{getPocketBaseUrl()}），订阅 <code className="text-xs">tasks</code> /{' '}
-            <code className="text-xs">blockers</code> 自动刷新列表
+            数据源：PocketBase（{getPocketBaseUrl()}），订阅{' '}
+            <code className="text-xs">tasks</code> /{' '}
+            <code className="text-xs">blockers</code> /{' '}
+            <code className="text-xs">key_results</code>
+            {' '}自动刷新列表
           </p>
           {loading && <p className="mt-1 text-xs text-[var(--goalops-text-subtle)]">加载中…</p>}
           {error && (
@@ -414,6 +443,21 @@ export function TasksPage() {
                     </option>
                   ))}
                 </select>
+                <select
+                  className={selectCls}
+                  value={keyResultFilter}
+                  onChange={(e) => patchFilters({ keyResultFilter: e.target.value })}
+                  aria-label="关键结果 KR"
+                >
+                  <option value="">全部 KR</option>
+                  <option value="__linked__">仅已关联 KR</option>
+                  <option value="__none__">未关联 KR</option>
+                  {keyResultPicklist.map(([kid, label]) => (
+                    <option key={kid} value={kid}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
                 <label className="flex cursor-pointer items-center gap-2 text-sm text-[var(--goalops-text-muted)]">
                   <Calendar className="size-4 text-[var(--goalops-text-subtle)]" aria-hidden />
                   <span className="whitespace-nowrap">截止日期</span>
@@ -472,13 +516,13 @@ export function TasksPage() {
                   >
                     重置
                   </button>
-                  <button
-                    type="button"
+                  <Link
+                    to="/tasks/new"
                     className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
                   >
                     <Plus className="size-4" aria-hidden />
                     新建任务
-                  </button>
+                  </Link>
                 </div>
               </div>
             </div>
@@ -486,10 +530,11 @@ export function TasksPage() {
 
           <SectionCard title="任务列表">
             <div className="-mx-5 overflow-x-auto">
-              <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
+              <table className="w-full min-w-[1280px] border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-y border-[var(--goalops-border)] bg-slate-50/80 text-xs font-semibold uppercase tracking-wide text-[var(--goalops-text-muted)]">
                     <th className="whitespace-nowrap px-5 py-3">所属目标</th>
+                    <th className="whitespace-nowrap px-5 py-3">关键结果 KR</th>
                     <th className="whitespace-nowrap px-5 py-3">任务名称</th>
                     <th className="whitespace-nowrap px-5 py-3">状态</th>
                     <th className="whitespace-nowrap px-5 py-3">负责人</th>
@@ -503,7 +548,7 @@ export function TasksPage() {
                 <tbody className="divide-y divide-[var(--goalops-border)]">
                   {pageSlice.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-5 py-10 text-center text-[var(--goalops-text-muted)]">
+                      <td colSpan={10} className="px-5 py-10 text-center text-[var(--goalops-text-muted)]">
                         {snapshot && !error ? '没有匹配的任务，尝试调整筛选条件' : '暂无任务数据'}
                       </td>
                     </tr>
@@ -522,7 +567,18 @@ export function TasksPage() {
                               <span className="truncate text-[var(--goalops-text)]">{t.objectiveName}</span>
                             </div>
                           </td>
-                          <td className="px-5 py-3 font-medium text-[var(--goalops-text)]">{t.title}</td>
+                          <td className="max-w-[200px] px-5 py-3 text-sm">
+                            {t.keyResultName ? (
+                              <span className="line-clamp-2 font-medium text-[var(--goalops-text)]">{t.keyResultName}</span>
+                            ) : (
+                              <span className="text-[var(--goalops-text-subtle)]">—</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3 font-medium text-[var(--goalops-text)]">
+                            <Link to={`/tasks/${t.id}/edit`} className="hover:text-[var(--goalops-primary)] hover:underline">
+                              {t.title}
+                            </Link>
+                          </td>
                           <td className="whitespace-nowrap px-5 py-3">
                             <div className="flex items-center gap-2">
                               <TaskStatusDot status={t.pbStatus} />

@@ -6,7 +6,38 @@ import {
   initialsFromName,
   parseNextActions,
 } from '@/features/objectives/objectiveDetailUtils'
+import { krCompletionFromRows } from '@/features/objectives/keyResults'
 import { pb } from '@/services/pocketbase'
+
+/** Base path for objective detail URLs. */
+export const OBJECTIVE_ROUTE = '/objectives'
+
+export type ObjectiveBlockerItem = {
+  description: string
+  severity: string
+}
+
+/** Maps PocketBase blocker severity to dashboard risk tiers. */
+export function blockerSeverityLevel(raw: unknown): 'high' | 'medium' | 'low' {
+  const s = String(raw ?? '').trim().toLowerCase()
+  if (s === 'high' || s === 'critical' || s === '高') return 'high'
+  if (s === 'medium' || s === '中') return 'medium'
+  return 'low'
+}
+
+function blockerItemsSorted(blockerList: RecordModel[] | undefined): ObjectiveBlockerItem[] {
+  if (!blockerList?.length) return []
+  const rank: Record<string, number> = { high: 0, medium: 1, low: 2 }
+  const sorted = [...blockerList].sort(
+    (a, b) =>
+      (rank[String(a.severity ?? '').toLowerCase()] ?? 99) -
+      (rank[String(b.severity ?? '').toLowerCase()] ?? 99),
+  )
+  return sorted.map((b) => ({
+    description: String(b.description ?? '').trim(),
+    severity: String(b.severity ?? 'low').toLowerCase(),
+  }))
+}
 
 /** Aligns with dashboard「健康度」semantics. */
 export type ObjectiveListHealth = 'normal' | 'risk' | 'blocked'
@@ -27,6 +58,18 @@ export type ObjectiveListRow = {
   next_action: string
   next_action_date: string
   updated_at: string
+  /** Checkbox KR summary */
+  kr_completed: number
+  kr_total: number
+  kr_percent: number | null
+  /** 执行任务完成率展示 */
+  task_completed: number
+  task_total: number
+  /** 条状进度：KR 优先，否则 PocketBase progress_percent */
+  progress_display_pct: number
+  blockers_count: number
+  /** Per-blocker lines for dashboards / drill-down */
+  blocker_items: ObjectiveBlockerItem[]
 }
 
 export type ObjectivesListKpi = {
@@ -36,8 +79,16 @@ export type ObjectivesListKpi = {
   normal_goals: { count: number; pct: number }
   risk_goals: { count: number; pct: number }
   high_priority_tasks: { count: number; delta: string }
+  /** 有 KR 的目标之 KR 完成率简单平均（无 KR 时为 null） */
+  avg_kr_completion_pct: number | null
   avg_progress_pct: number
   avg_progress_delta: string
+  /** 未完结且未取消的目标数 */
+  active_objectives_count: number
+  /** 至少有一条阻塞记录的目标数 */
+  blocked_objectives_count: number
+  total_blockers: number
+  team_members_count: number
 }
 
 export type ObjectivesListPayload = {
@@ -148,10 +199,42 @@ function sparklineFromRecords(records: RecordModel[]): number[] {
   return raw
 }
 
+function taskObjectiveId(record: RecordModel): string {
+  const oid = record.objective
+  return typeof oid === 'string' ? oid : String(oid ?? '')
+}
+
+function groupsTasksByObjective(records: RecordModel[]): Map<string, { total: number; done: number }> {
+  const m = new Map<string, { total: number; done: number }>()
+  for (const t of records) {
+    const oid = taskObjectiveId(t)
+    if (!oid) continue
+    const prev = m.get(oid) ?? { total: 0, done: 0 }
+    prev.total++
+    if (String(t.status ?? '') === 'done') prev.done++
+    m.set(oid, prev)
+  }
+  return m
+}
+
+function groupKeyResultsByObjective(records: RecordModel[]): Map<string, RecordModel[]> {
+  const m = new Map<string, RecordModel[]>()
+  for (const kr of records) {
+    const oid = typeof kr.objective === 'string' ? kr.objective : String(kr.objective ?? '')
+    if (!oid) continue
+    const arr = m.get(oid) ?? []
+    arr.push(kr)
+    m.set(oid, arr)
+  }
+  return m
+}
+
 function recordToRow(
   record: RecordModel & { expand?: { owner?: RecordModel } },
   byObjBlockers: Map<string, RecordModel[]>,
   blockedIds: Set<string>,
+  byObjKr: Map<string, RecordModel[]>,
+  byObjTasks: Map<string, { total: number; done: number }>,
 ): ObjectiveListRow {
   const owner = record.expand?.owner
   const ownerId = typeof record.owner === 'string' ? record.owner : ''
@@ -165,11 +248,25 @@ function recordToRow(
   const nextActs = parseNextActions(record.next_actions)
   const firstNext = nextActs[0]
 
+  const krs = byObjKr.get(record.id) ?? []
+  const krAgg = krCompletionFromRows(krs.map((r) => ({ name: String(r.name ?? ''), is_completed: Boolean(r.is_completed) })))
+  const taskPair = byObjTasks.get(record.id) ?? { total: 0, done: 0 }
+  const blocker_items = blockerItemsSorted(blockerList)
+
+  const progress_display_pct =
+    krAgg.percent !== null ? clampPercent(krAgg.percent) : clampPercent(record.progress_percent)
+
   return {
     id: record.id,
     name: String(record.name ?? '—'),
     definition: editorToPlainText(String(record.definition ?? '')),
     progress_percent: clampPercent(record.progress_percent),
+    progress_display_pct,
+    kr_completed: krAgg.completed,
+    kr_total: krAgg.total,
+    kr_percent: krAgg.percent !== null ? clampPercent(krAgg.percent) : null,
+    task_completed: taskPair.done,
+    task_total: taskPair.total,
     health,
     priority: priorityLabelFromPb(pbPriority),
     owner_name: ownerName,
@@ -177,6 +274,8 @@ function recordToRow(
     owner_initials: initialsFromName(ownerName || '?'),
     owner_color: ownerId ? ownerAvatarColor(ownerId) : '#94a3b8',
     blockers: blockersSummaryForObjective(blockerList),
+    blockers_count: blockerList?.length ?? 0,
+    blocker_items,
     next_action: firstNext?.suggestion?.trim() || '—',
     next_action_date: firstNext ? formatDotDate(firstNext.suggestion_date) : '—',
     updated_at: formatObjectiveUpdated(record.updated),
@@ -187,6 +286,9 @@ function computeKpis(
   objectives: RecordModel[],
   blockedIds: Set<string>,
   highPriorityOpenTasksCount: number,
+  byObjKr: Map<string, RecordModel[]>,
+  totalBlockers: number,
+  teamMembersCount: number,
 ): ObjectivesListKpi {
   const { label: period_label, range: period_range } = currentQuarterPeriod()
   const total = objectives.length
@@ -205,10 +307,24 @@ function computeKpis(
   const pct = (n: number) => Math.round((n / denomPct) * 100)
 
   const activeForAvg = objectives.filter((o) => String(o.status ?? '') !== 'cancelled')
+  const pctValues: number[] = []
+  for (const o of activeForAvg) {
+    const krAgg = krCompletionFromRows((byObjKr.get(o.id) ?? []).map((r) => ({ name: String(r.name ?? ''), is_completed: Boolean(r.is_completed) })))
+    if (krAgg.percent !== null) pctValues.push(krAgg.percent)
+  }
+  const avgKr = pctValues.length === 0 ? null : Math.round(pctValues.reduce((s, n) => s + n, 0) / pctValues.length)
+
   const avgProgress =
     activeForAvg.length === 0
       ? 0
-      : activeForAvg.reduce((s, o) => s + clampPercent(o.progress_percent), 0) / activeForAvg.length
+      : activeForAvg.reduce((s, o) => {
+          const krAgg = krCompletionFromRows((byObjKr.get(o.id) ?? []).map((r) => ({ name: String(r.name ?? ''), is_completed: Boolean(r.is_completed) })))
+          const disp =
+            krAgg.percent !== null
+              ? clampPercent(krAgg.percent)
+              : clampPercent(o.progress_percent)
+          return s + disp
+        }, 0) / activeForAvg.length
 
   let deltaSum = 0
   let deltaN = 0
@@ -227,6 +343,14 @@ function computeKpis(
   /** Simple secondary hint: objectives at risk vs last week N/A → show proportion of 「风险」targets */
   const riskHint = risk > 0 ? `${risk} 个风险` : '稳定'
 
+  let blocked_objectives_count = 0
+  let active_objectives_count = 0
+  for (const o of objectives) {
+    const st = String(o.status ?? '')
+    if (st !== 'done' && st !== 'cancelled') active_objectives_count++
+    if (blockedIds.has(o.id)) blocked_objectives_count++
+  }
+
   return {
     period_label,
     period_range,
@@ -237,8 +361,13 @@ function computeKpis(
       count: highPriorityOpenTasksCount,
       delta: riskHint,
     },
+    avg_kr_completion_pct: avgKr,
     avg_progress_pct: Math.round(avgProgress),
     avg_progress_delta,
+    active_objectives_count,
+    blocked_objectives_count,
+    total_blockers: totalBlockers,
+    team_members_count: teamMembersCount,
   }
 }
 
@@ -247,10 +376,9 @@ function computeKpis(
  */
 export async function fetchObjectivesList(): Promise<ObjectivesListPayload> {
   const req = `objectives_list_${Date.now()}`
-  const [objectiveRecords, blockerRecords, highPriTasks] = await Promise.all([
+  const [objectiveRecords, blockerRecords, taskRecords, krRecordsMaybe, memberRecords] = await Promise.all([
     pb.collection('objectives').getFullList({
       expand: 'owner',
-      // `updated` is not a valid sort column in this project's PB rules; match `fetchPeopleBoard`.
       sort: '-priority,name',
       requestKey: `${req}_o`,
       batch: 500,
@@ -260,15 +388,32 @@ export async function fetchObjectivesList(): Promise<ObjectivesListPayload> {
       batch: 400,
     }),
     pb.collection('tasks').getFullList({
-      filter: '(priority = "P0" || priority = "P1") && status != "done"',
-      requestKey: `${req}_hp`,
-      batch: 400,
-      fields: 'id',
+      batch: 500,
+      fields: 'id,objective,status,priority',
+      requestKey: `${req}_t`,
     }),
+    pb.collection('key_results').getFullList({
+      batch: 500,
+      fields: 'id,objective,name,is_completed,sort_order',
+      requestKey: `${req}_kr`,
+    }).catch(() => [] as RecordModel[]),
+    pb.collection('members')
+      .getFullList({
+        batch: 500,
+        fields: 'id',
+        requestKey: `${req}_m`,
+      })
+      .catch(() => [] as RecordModel[]),
   ])
+
+  const highPriTasks = taskRecords.filter(
+    (t) => (String(t.priority ?? '') === 'P0' || String(t.priority ?? '') === 'P1') && String(t.status ?? '') !== 'done',
+  )
 
   const blockedIds = blockedObjectiveIdsFrom(blockerRecords)
   const byObj = groupBlockersByObjective(blockerRecords)
+  const byObjKr = groupKeyResultsByObjective(krRecordsMaybe)
+  const byObjTasks = groupsTasksByObjective(taskRecords)
 
   const sortedObjectives = [...objectiveRecords].sort(
     (a, b) =>
@@ -277,10 +422,23 @@ export async function fetchObjectivesList(): Promise<ObjectivesListPayload> {
   )
 
   const rows = sortedObjectives.map((rec) =>
-    recordToRow(rec as RecordModel & { expand?: { owner?: RecordModel } }, byObj, blockedIds),
+    recordToRow(
+      rec as RecordModel & { expand?: { owner?: RecordModel } },
+      byObj,
+      blockedIds,
+      byObjKr,
+      byObjTasks,
+    ),
   )
 
-  const kpis = computeKpis(objectiveRecords, blockedIds, highPriTasks.length)
+  const kpis = computeKpis(
+    objectiveRecords,
+    blockedIds,
+    highPriTasks.length,
+    byObjKr,
+    blockerRecords.length,
+    memberRecords.length,
+  )
   const sparkline_points = sparklineFromRecords(objectiveRecords)
 
   return {

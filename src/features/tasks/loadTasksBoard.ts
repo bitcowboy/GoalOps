@@ -24,6 +24,10 @@ export type TaskListRow = {
   prerequisiteLabel: string | null
   /** P0–P3 */
   priority: string
+  /** Optional PocketBase `key_result` relation id */
+  keyResultId: string
+  /** Resolved KR name when expand includes `key_result` */
+  keyResultName: string
   /** `YYYY-MM-DD` or '' */
   dueIso: string
   estimatedHours: number
@@ -245,12 +249,15 @@ export function computeDependencyAlerts(
 }
 
 export function recordToTaskListRow(
-  record: RecordModel & { expand?: { assignee?: RecordModel; objective?: RecordModel } },
+  record: RecordModel & {
+    expand?: { assignee?: RecordModel; objective?: RecordModel; key_result?: RecordModel }
+  },
   titles: Map<string, string>,
   blockedObjectiveIds: Set<string>,
 ): TaskListRow {
   const objective = record.expand?.objective as RecordModel | undefined
   const assignee = record.expand?.assignee as RecordModel | undefined
+  const keyRes = record.expand?.key_result as RecordModel | undefined
   const objectiveId = typeof record.objective === 'string' ? record.objective : String(record.objective ?? '')
   const objectiveName = objective ? String(objective.name ?? '') : objectiveId ? `目标 ${objectiveId.slice(0, 8)}…` : '—'
   const assigneeId = typeof record.assignee === 'string' ? record.assignee : String(record.assignee ?? '')
@@ -268,6 +275,10 @@ export function recordToTaskListRow(
 
   const objectiveHasBlocker = !!(objectiveId && blockedObjectiveIds.has(objectiveId))
 
+  const krRaw = (record as RecordModel & { key_result?: unknown }).key_result
+  const keyResultId = typeof krRaw === 'string' && krRaw ? krRaw : krRaw ? String(krRaw) : ''
+  const keyResultName = keyRes ? String(keyRes.name ?? '').trim() : ''
+
   const row: TaskListRow = {
     id: record.id,
     pbStatus,
@@ -281,6 +292,8 @@ export function recordToTaskListRow(
     assigneeAvatarColor: assigneeId ? memberDotColor(assigneeId) : '#94a3b8',
     prerequisiteLabel: firstPredTitle,
     priority,
+    keyResultId,
+    keyResultName,
     dueIso,
     estimatedHours: est,
     risk: inferRisk(pbStatus, priority, dueIso, objectiveHasBlocker),
@@ -306,7 +319,7 @@ export async function fetchTasksBoard(): Promise<TasksBoardPayload> {
   const req = `tasks_board_${Date.now()}`
   const [taskRecordsRaw, blockerRecordsRaw, memberRecordsRaw, objectiveRecordsRaw] = await Promise.all([
     pb.collection('tasks').getFullList({
-      expand: 'assignee,objective',
+      expand: 'assignee,objective,key_result',
       sort: 'due_date',
       requestKey: `${req}_t`,
     }),
@@ -330,7 +343,9 @@ export async function fetchTasksBoard(): Promise<TasksBoardPayload> {
   const titles = buildTitleByTaskId(taskRecordsRaw)
   const rows = taskRecordsRaw.map((r) =>
     recordToTaskListRow(
-      r as RecordModel & { expand?: { assignee?: RecordModel; objective?: RecordModel } },
+      r as RecordModel & {
+        expand?: { assignee?: RecordModel; objective?: RecordModel; key_result?: RecordModel }
+      },
       titles,
       blockedObjectiveIds,
     ),

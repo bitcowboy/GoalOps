@@ -3,16 +3,14 @@ import {
   ArrowLeft,
   Box,
   Calendar,
-  Check,
-  ChevronRight,
   Circle,
   MoreHorizontal,
   Pencil,
-  Square,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { MetricCard, ProgressBar, SectionCard, StatusPill } from '@/components'
-import type { ObjectiveNextActionJson, ObjectivePhaseStep } from '@/models'
+import type { ObjectiveNextActionJson } from '@/models'
+import { krCompletionFromRows } from '@/features/objectives/keyResults'
 import {
   calendarInclusiveDays,
   clampPercent,
@@ -23,7 +21,6 @@ import {
   normalizeObjectiveStatusKey,
   objectiveStatusLabel,
   parseNextActions,
-  parsePhaseTimeline,
   parseStringArray,
   priorityPillTone,
   remainingCalendarDays,
@@ -33,8 +30,10 @@ import {
 type ObjectiveDetailViewProps = {
   objective: RecordModel & { expand?: { owner?: RecordModel } }
   tasks: RecordModel[]
-  deliverables: RecordModel[]
   blockers: RecordModel[]
+  keyResults: RecordModel[]
+  onToggleKeyResult: (krId: string, nextChecked: boolean) => void | Promise<void>
+  keyResultBusyId: string | null
 }
 
 function Avatar({
@@ -57,73 +56,6 @@ function Avatar({
   )
 }
 
-function PhaseRing({ value }: { value: number }) {
-  const pct = clampPercent(value)
-  const r = 18
-  const circumference = 2 * Math.PI * r
-  const strokeDashoffset = circumference - (pct / 100) * circumference
-  return (
-    <div className="relative flex size-14 items-center justify-center" aria-hidden>
-      <svg className="absolute inset-0 -rotate-90" viewBox="0 0 44 44">
-        <circle cx="22" cy="22" r={r} fill="none" stroke="#e5e7eb" strokeWidth="4" />
-        <circle
-          cx="22"
-          cy="22"
-          r={r}
-          fill="none"
-          stroke="var(--goalops-primary)"
-          strokeWidth="4"
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-        />
-      </svg>
-      <span className="relative text-[11px] font-bold tabular-nums text-[var(--goalops-text)]">{pct}%</span>
-    </div>
-  )
-}
-
-function phaseStepMeta(step: ObjectivePhaseStep) {
-  if (step.status === 'done') {
-    return { label: `已完成 ${clampPercent(step.progress_percent ?? 100)}%`, tone: 'success' as const }
-  }
-  if (step.status === 'in_progress') {
-    return { label: '进行中', tone: 'primary' as const }
-  }
-  return { label: '未开始', tone: 'muted' as const }
-}
-
-function PhaseIcon({ step }: { step: ObjectivePhaseStep }) {
-  if (step.status === 'done') {
-    return (
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--goalops-success-soft)] text-[var(--goalops-success)]">
-        <Check className="size-5" aria-hidden />
-      </span>
-    )
-  }
-  if (step.status === 'in_progress') {
-    return <PhaseRing value={step.progress_percent ?? 0} />
-  }
-  return (
-    <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[var(--goalops-border)] bg-slate-50 text-[var(--goalops-text-subtle)]">
-      <Circle className="size-5" aria-hidden />
-    </span>
-  )
-}
-
-function DeliverableStatusTag({ status }: { status: string }) {
-  const s = status.trim()
-  if (s === '进行中')
-    return (
-      <span className="rounded-md bg-[var(--goalops-primary-soft)] px-2 py-0.5 text-xs font-semibold text-[var(--goalops-primary)]">
-        {s}
-      </span>
-    )
-  return (
-    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-[var(--goalops-text-muted)]">{s}</span>
-  )
-}
-
 function TaskStatusDot({ status }: { status: string }) {
   const map: Record<string, string> = {
     pending: 'bg-[var(--goalops-text-subtle)]',
@@ -136,11 +68,22 @@ function TaskStatusDot({ status }: { status: string }) {
   return <span className={`inline-block size-2 rounded-full ${cls}`} aria-hidden />
 }
 
+function sortKeyResultsByOrder(records: RecordModel[]): RecordModel[] {
+  return [...records].sort((a, b) => {
+    const sa = typeof a.sort_order === 'number' ? a.sort_order : Number(a.sort_order ?? 0)
+    const sb = typeof b.sort_order === 'number' ? b.sort_order : Number(b.sort_order ?? 0)
+    if (sa !== sb) return sa - sb
+    return String(a.name ?? '').localeCompare(String(b.name ?? ''), 'zh-CN')
+  })
+}
+
 export function ObjectiveDetailView({
   objective: obj,
   tasks,
-  deliverables,
   blockers,
+  keyResults,
+  onToggleKeyResult,
+  keyResultBusyId,
 }: ObjectiveDetailViewProps) {
   const owner = obj.expand?.owner as RecordModel | undefined
   const ownerName = owner ? String(owner.name ?? '') : '—'
@@ -154,7 +97,17 @@ export function ObjectiveDetailView({
   const createdAt = formatDateTime(obj.created)
   const updatedAt = formatDateTime(obj.updated)
 
-  const progress = clampPercent(obj.progress_percent)
+  const krNamed = keyResults.filter((kr) => String(kr.name ?? '').trim())
+  const krAgg = krCompletionFromRows(
+    krNamed.map((kr) => ({
+      name: String(kr.name ?? ''),
+      is_completed: Boolean(kr.is_completed),
+    })),
+  )
+  const krBasedProgress =
+    krNamed.length > 0 && krAgg.percent !== null ? clampPercent(krAgg.percent) : null
+
+  const progress = krBasedProgress ?? clampPercent(obj.progress_percent)
   const deltaRaw = obj.progress_delta_percent
   const delta =
     typeof deltaRaw === 'number' && !Number.isNaN(deltaRaw)
@@ -172,9 +125,7 @@ export function ObjectiveDetailView({
   const remain = remainingCalendarDays(due)
 
   const background = String(obj.background ?? '').trim()
-  const successList = parseStringArray(obj.success_criteria)
   const outList = parseStringArray(obj.out_of_scope)
-  const phases = parsePhaseTimeline(obj.phase_timeline)
   const nextActions = parseNextActions(obj.next_actions)
 
   const sk = normalizeObjectiveStatusKey(statusKey)
@@ -244,10 +195,13 @@ export function ObjectiveDetailView({
 
       {/* Summary metrics */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="总体进度">
+        <MetricCard label={krAgg.total > 0 ? `总体进度（KR ${krAgg.completed}/${krAgg.total}）` : '总体进度'}>
           <div className="text-3xl font-semibold tabular-nums text-[var(--goalops-text)]">{progress}%</div>
           <div className="mt-2 space-y-2">
             <ProgressBar value={progress} />
+            {krBasedProgress != null ? (
+              <span className="text-xs text-[var(--goalops-text-muted)]">按已命名 KR 勾选完成率计算；与 PocketBase progress 对齐同步。</span>
+            ) : null}
             {delta != null && !Number.isNaN(delta) ? (
               <span className="inline-flex rounded-md bg-[var(--goalops-success-soft)] px-2 py-0.5 text-xs font-semibold text-[var(--goalops-success)]">
                 较上周 {delta >= 0 ? '+' : ''}
@@ -292,26 +246,65 @@ export function ObjectiveDetailView({
         </MetricCard>
       </div>
 
+      <SectionCard
+        title="关键结果（Checkbox）"
+        action={
+          <Link to="/tasks" className="text-xs font-semibold text-[var(--goalops-primary)] hover:underline">
+            任务页可按 KR 筛选
+          </Link>
+        }
+      >
+        {sortKeyResultsByOrder(keyResults).length === 0 ? (
+          <p className="text-sm text-[var(--goalops-text-muted)]">
+            暂无关键结果条目。使用「编辑目标」添加 Checkbox KR。
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {sortKeyResultsByOrder(keyResults).map((kr) => {
+              const done = Boolean(kr.is_completed)
+              const nm = String(kr.name ?? '').trim() || '（未命名）'
+              const ownerKr = kr.expand?.owner as RecordModel | undefined
+              const krOwnerNm = ownerKr ? String(ownerKr.name ?? '').trim() : ''
+              const note = String((kr as RecordModel & { note?: unknown }).note ?? '').trim()
+              const busy = keyResultBusyId === kr.id
+              return (
+                <li key={kr.id}>
+                  <label className="flex cursor-pointer flex-col gap-1 rounded-xl border border-[var(--goalops-border)] bg-slate-50/40 p-3 hover:bg-slate-50 sm:flex-row sm:items-start sm:gap-3">
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      <input
+                        type="checkbox"
+                        className="mt-1 size-4 shrink-0 rounded border-[var(--goalops-border)] text-[var(--goalops-primary)]"
+                        checked={done}
+                        disabled={busy}
+                        onChange={(e) => void onToggleKeyResult(kr.id, e.target.checked)}
+                      />
+                      <div className="min-w-0">
+                        <span className={`text-sm font-medium ${done ? 'text-[var(--goalops-text-subtle)] line-through' : 'text-[var(--goalops-text)]'}`}>
+                          {nm}
+                        </span>
+                        {krOwnerNm ? (
+                          <div className="mt-1 text-xs text-[var(--goalops-text-muted)]">KR 负责人 · {krOwnerNm}</div>
+                        ) : null}
+                        {note ? (
+                          <div className="mt-1 text-xs leading-relaxed text-[var(--goalops-text-muted)]">{note}</div>
+                        ) : null}
+                      </div>
+                    </div>
+                    {busy ? <span className="text-[11px] text-[var(--goalops-text-subtle)] sm:mt-1">保存中…</span> : null}
+                  </label>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </SectionCard>
+
       {/* Context */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <SectionCard title="背景 / 价值">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <SectionCard title="目标描述">
           <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--goalops-text-muted)]">
             {background || '—'}
           </p>
-        </SectionCard>
-        <SectionCard title="成功标准">
-          {successList.length === 0 ? (
-            <p className="text-sm text-[var(--goalops-text-muted)]">—</p>
-          ) : (
-            <ul className="space-y-3">
-              {successList.map((line, i) => (
-                <li key={`${i}-${line.slice(0, 12)}`} className="flex gap-2 text-sm text-[var(--goalops-text-muted)]">
-                  <Check className="mt-0.5 size-4 shrink-0 text-[var(--goalops-success)]" aria-hidden />
-                  <span>{line}</span>
-                </li>
-              ))}
-            </ul>
-          )}
         </SectionCard>
         <SectionCard title="不属于本目标范围">
           {outList.length === 0 ? (
@@ -329,55 +322,16 @@ export function ObjectiveDetailView({
         </SectionCard>
       </div>
 
-      {/* Phases */}
-      <SectionCard title="阶段进展">
-        {phases.length === 0 ? (
-          <p className="text-sm text-[var(--goalops-text-muted)]">暂无阶段数据</p>
-        ) : (
-          <div className="flex flex-wrap items-start gap-2 lg:flex-nowrap lg:gap-1">
-            {phases.map((step, idx) => {
-              const meta = phaseStepMeta(step)
-              return (
-                <div key={`${step.title}-${idx}`} className="flex min-w-[200px] flex-1 items-start gap-2">
-                  <div className="flex flex-1 flex-col items-center gap-2 rounded-xl border border-[var(--goalops-border)] bg-slate-50/40 p-4">
-                    <PhaseIcon step={step} />
-                    <div className="text-center">
-                      <div className="text-sm font-semibold text-[var(--goalops-text)]">{step.title}</div>
-                      <div className="mt-1 text-xs text-[var(--goalops-text-muted)]">{step.date_range}</div>
-                      <div
-                        className={`mt-2 text-xs font-medium ${
-                          meta.tone === 'success'
-                            ? 'text-[var(--goalops-success)]'
-                            : meta.tone === 'primary'
-                              ? 'text-[var(--goalops-primary)]'
-                              : 'text-[var(--goalops-text-subtle)]'
-                        }`}
-                      >
-                        {meta.label}
-                      </div>
-                    </div>
-                  </div>
-                  {idx < phases.length - 1 ? (
-                    <div className="hidden shrink-0 pt-8 text-[var(--goalops-text-subtle)] lg:block">
-                      <ChevronRight className="size-5" aria-hidden />
-                    </div>
-                  ) : null}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </SectionCard>
-
       {/* Tables */}
       <div className="space-y-6">
         <div className="space-y-6">
           <SectionCard title="关联任务">
             <div className="-mx-5 overflow-x-auto">
-              <table className="w-full min-w-[560px] border-collapse text-left text-sm">
+              <table className="w-full min-w-[760px] border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-y border-[var(--goalops-border)] bg-slate-50/80 text-xs font-semibold uppercase tracking-wide text-[var(--goalops-text-muted)]">
                     <th className="px-5 py-3">任务名称</th>
+                    <th className="px-5 py-3">关键结果 KR</th>
                     <th className="px-5 py-3">状态</th>
                     <th className="px-5 py-3">优先级</th>
                     <th className="px-5 py-3">负责人</th>
@@ -387,13 +341,15 @@ export function ObjectiveDetailView({
                 <tbody className="divide-y divide-[var(--goalops-border)]">
                   {tasks.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-5 py-8 text-center text-[var(--goalops-text-muted)]">
+                      <td colSpan={6} className="px-5 py-8 text-center text-[var(--goalops-text-muted)]">
                         暂无任务
                       </td>
                     </tr>
                   ) : (
                     tasks.map((t) => {
                       const assignee = t.expand?.assignee as RecordModel | undefined
+                      const krEx = (t.expand as { key_result?: RecordModel } | undefined)?.key_result
+                      const krLabel = krEx ? String(krEx.name ?? '').trim() : ''
                       const an = assignee ? String(assignee.name ?? '') : '—'
                       const ai = initialsFromName(an)
                       const st = String(t.status ?? '')
@@ -401,6 +357,13 @@ export function ObjectiveDetailView({
                       return (
                         <tr key={t.id} className="bg-[var(--goalops-surface)]">
                           <td className="px-5 py-3 font-medium text-[var(--goalops-text)]">{String(t.title ?? '')}</td>
+                          <td className="max-w-[180px] px-5 py-3 text-sm text-[var(--goalops-text-muted)]">
+                            {krLabel ? (
+                              <span className="line-clamp-2 font-medium text-[var(--goalops-text)]">{krLabel}</span>
+                            ) : (
+                              <span className="text-[var(--goalops-text-subtle)]">—</span>
+                            )}
+                          </td>
                           <td className="whitespace-nowrap px-5 py-3">
                             <div className="flex items-center gap-2">
                               <TaskStatusDot status={st} />
@@ -431,50 +394,6 @@ export function ObjectiveDetailView({
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
-          <SectionCard title="核心交付件">
-            <div className="-mx-5 overflow-x-auto">
-              <table className="w-full min-w-[480px] border-collapse text-left text-sm">
-                <thead>
-                  <tr className="border-y border-[var(--goalops-border)] bg-slate-50/80 text-xs font-semibold uppercase tracking-wide text-[var(--goalops-text-muted)]">
-                    <th className="px-5 py-3">交付件</th>
-                    <th className="px-5 py-3">版本</th>
-                    <th className="px-5 py-3">计划完成日</th>
-                    <th className="px-5 py-3">状态</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--goalops-border)]">
-                  {deliverables.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="px-5 py-8 text-center text-[var(--goalops-text-muted)]">
-                        暂无交付件
-                      </td>
-                    </tr>
-                  ) : (
-                    deliverables.map((row) => (
-                      <tr key={row.id} className="bg-[var(--goalops-surface)]">
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-2 font-medium text-[var(--goalops-text)]">
-                            <Square className="size-4 text-[var(--goalops-text-subtle)]" aria-hidden />
-                            {String(row.title ?? '')}
-                          </div>
-                        </td>
-                        <td className="whitespace-nowrap px-5 py-3 text-[var(--goalops-text-muted)]">
-                          {String(row.version ?? '—')}
-                        </td>
-                        <td className="whitespace-nowrap px-5 py-3 text-[var(--goalops-text-muted)]">
-                          {formatDotDate(String(row.planned_completion_date ?? ''))}
-                        </td>
-                        <td className="px-5 py-3">
-                          <DeliverableStatusTag status={String(row.status ?? '')} />
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </SectionCard>
-
           <SectionCard title="当前卡点">
             <div className="-mx-5 overflow-x-auto">
               <table className="w-full min-w-[520px] border-collapse text-left text-sm">

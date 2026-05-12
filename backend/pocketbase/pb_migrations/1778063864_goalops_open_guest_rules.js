@@ -12,7 +12,6 @@ migrate(
       'deliverables',
       'core_documents',
       'blockers',
-      'misc_work',
     ]
     for (const name of names) {
       const col = app.findCollectionByNameOrId(name)
@@ -32,7 +31,6 @@ migrate(
       'deliverables',
       'core_documents',
       'blockers',
-      'misc_work',
     ]
     for (const name of names) {
       const col = app.findCollectionByNameOrId(name)

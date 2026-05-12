@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import type { RecordModel } from 'pocketbase'
+import { useCallback, useEffect, useState } from 'react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
+
 import { ObjectiveDetailView } from '@/features/objectives'
+import { clampPercent } from '@/features/objectives/objectiveDetailUtils'
+import { recomputeObjectiveProgressFromKeyResults } from '@/features/objectives/createObjective'
 import { pb } from '@/services/pocketbase'
 
 type DetailLocationState = { objectiveUpdated?: boolean }
@@ -14,33 +17,33 @@ export function ObjectiveDetailPage() {
   const [updateBanner, setUpdateBanner] = useState(false)
   const [objective, setObjective] = useState<(RecordModel & { expand?: { owner?: RecordModel } }) | null>(null)
   const [tasks, setTasks] = useState<RecordModel[]>([])
-  const [deliverables, setDeliverables] = useState<RecordModel[]>([])
   const [blockers, setBlockers] = useState<RecordModel[]>([])
+  const [keyResults, setKeyResults] = useState<RecordModel[]>([])
+  const [keyResultBusyId, setKeyResultBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (!id) return
-
-    let cancelled = false
-
-    void (async () => {
-      setLoading(true)
+  const loadDetail = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!id) return
+      const silent = Boolean(opts?.silent)
+      if (!silent) setLoading(true)
       try {
-        const [obj, taskList, delList, blkList] = await Promise.all([
+        const [obj, taskList, blkList, krList] = await Promise.all([
           pb.collection('objectives').getOne(id, { expand: 'owner' }),
           pb.collection('tasks').getFullList({
             filter: `objective="${id}"`,
-            expand: 'assignee',
+            expand: 'assignee,key_result',
             sort: 'due_date',
-          }),
-          pb.collection('deliverables').getFullList({
-            filter: `objective="${id}"`,
-            sort: 'planned_completion_date',
           }),
           pb.collection('blockers').getFullList({
             filter: `objective="${id}"`,
             expand: 'owner',
+          }),
+          pb.collection('key_results').getFullList({
+            filter: `objective="${id}"`,
+            expand: 'owner',
+            sort: 'sort_order,name',
           }),
         ])
 
@@ -50,38 +53,55 @@ export function ObjectiveDetailPage() {
             (severityRank[String(a.severity ?? '')] ?? 99) - (severityRank[String(b.severity ?? '')] ?? 99),
         )
 
-        if (!cancelled) {
-          setObjective(obj)
-          setTasks(taskList)
-          setDeliverables(delList)
-          setBlockers(blkList)
-          setError(null)
-        }
+        setObjective(obj as RecordModel & { expand?: { owner?: RecordModel } })
+        setTasks(taskList)
+        setBlockers(blkList)
+        setKeyResults(krList)
+        setError(null)
       } catch (e) {
-        if (!cancelled) {
-          setObjective(null)
-          setTasks([])
-          setDeliverables([])
-          setBlockers([])
-          setError(e instanceof Error ? e.message : String(e))
-        }
+        setObjective(null)
+        setTasks([])
+        setBlockers([])
+        setKeyResults([])
+        setError(e instanceof Error ? e.message : String(e))
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!silent) setLoading(false)
       }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [id])
+    },
+    [id],
+  )
 
   useEffect(() => {
-    const st = location.state as DetailLocationState | undefined
-    if (st?.objectiveUpdated) {
-      setUpdateBanner(true)
-      navigate(location.pathname, { replace: true, state: {} })
-    }
+    queueMicrotask(() => void loadDetail({ silent: false }))
+  }, [loadDetail])
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      const st = location.state as DetailLocationState | undefined
+      if (st?.objectiveUpdated) {
+        setUpdateBanner(true)
+        navigate(location.pathname, { replace: true, state: {} })
+      }
+    })
   }, [location.pathname, location.state, navigate])
+
+  const onToggleKeyResult = useCallback(
+    async (krId: string, nextChecked: boolean) => {
+      if (!id) return
+      setKeyResultBusyId(krId)
+      try {
+        await pb.collection('key_results').update(krId, { is_completed: nextChecked })
+        const pct = await recomputeObjectiveProgressFromKeyResults(id)
+        if (pct !== null) {
+          await pb.collection('objectives').update(id, { progress_percent: clampPercent(pct) })
+        }
+        await loadDetail({ silent: true })
+      } finally {
+        setKeyResultBusyId(null)
+      }
+    },
+    [id, loadDetail],
+  )
 
   if (!id) {
     return (
@@ -118,8 +138,10 @@ export function ObjectiveDetailPage() {
         <ObjectiveDetailView
           objective={objective}
           tasks={tasks}
-          deliverables={deliverables}
           blockers={blockers}
+          keyResults={keyResults}
+          onToggleKeyResult={onToggleKeyResult}
+          keyResultBusyId={keyResultBusyId}
         />
       ) : null}
     </div>

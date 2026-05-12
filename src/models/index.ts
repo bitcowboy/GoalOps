@@ -61,17 +61,36 @@ export interface Objective {
   progressDeltaPercent?: number | null
 }
 
+export type MemberStatus = 'active' | 'inactive'
+
+/** PRD: Checkbox 关键结果 */
+export interface KeyResult {
+  id: string
+  objectiveId: string
+  name: string
+  isCompleted: boolean
+  ownerId?: string
+  note?: string
+  sortOrder?: number
+  createdAt?: string
+  updatedAt?: string
+}
+
 export interface Member {
   id: string
   name: string
   role: string
   team: string
   weeklyAvailableHours: number
+  /** PocketBase 历史行可能为空，视为 active */
+  status?: MemberStatus | string
 }
 
 export interface Task {
   id: string
   objectiveId: string
+  /** 可选关联 KR */
+  keyResultId?: string
   title: string
   assigneeId: string
   status: TaskStatus | string
@@ -108,12 +127,4 @@ export interface Blocker {
   severity: string
   ownerId?: string
   targetResolutionDate?: string
-}
-
-export interface MiscWork {
-  id: string
-  memberId: string
-  title: string
-  kind: 'meeting' | 'ad_hoc' | string
-  hours: number
 }

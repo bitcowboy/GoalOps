@@ -2,7 +2,6 @@ import {
   AlertTriangle,
   CalendarClock,
   ChevronDown,
-  Clock,
   Download,
   Flag,
   Info,
@@ -10,6 +9,7 @@ import {
   Search,
   Users,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { MetricCard, SectionCard, SemiCircleGauge, StatusPill } from '@/components'
 import {
@@ -29,11 +29,8 @@ import {
 type SortKey = 'utilization' | 'tasks' | 'name'
 
 function TimeAllocationBar({ row }: { row: PeopleBoardRow }) {
-  const sum = Math.max(row.hoursObjectiveWork + row.hoursMeeting + row.hoursMisc, 0.1)
-  const pObj = Math.round((row.hoursObjectiveWork / sum) * 100)
-  const pMeet = Math.round((row.hoursMeeting / sum) * 100)
-  const pMisc = Math.max(100 - pObj - pMeet, 0)
-  const label = `${row.hoursObjectiveWork || 0}h / ${row.hoursMeeting || 0}h / ${row.hoursMisc || 0}h`
+  const pObj = row.hoursObjectiveWork > 0 ? 100 : 0
+  const label = `${row.hoursObjectiveWork || 0}h`
   return (
     <div className="min-w-[140px] max-w-[200px]">
       <div className="flex h-2 overflow-hidden rounded-full bg-slate-100">
@@ -45,14 +42,8 @@ function TimeAllocationBar({ row }: { row: PeopleBoardRow }) {
             aria-hidden
           />
         ) : null}
-        {pMeet > 0 ? (
-          <span className="bg-amber-500" style={{ width: `${pMeet}%` }} title="会议" aria-hidden />
-        ) : null}
-        {pMisc > 0 ? (
-          <span className="bg-slate-300" style={{ width: `${pMisc}%` }} title="杂事" aria-hidden />
-        ) : null}
       </div>
-      <div className="mt-1 text-[11px] text-[var(--goalops-text-subtle)]">目标任务 / 会议 / 杂事</div>
+      <div className="mt-1 text-[11px] text-[var(--goalops-text-subtle)]">目标任务</div>
       <div className="tabular-nums text-xs font-medium text-[var(--goalops-text)]">{label}</div>
     </div>
   )
@@ -107,12 +98,10 @@ function exportPeopleCsv(rows: PeopleBoardRow[]) {
     '进度%',
     '任务数',
     '目标任务工时',
-    '会议工时',
-    '杂事工时',
     '占用率%',
   ]
   const lines = rows.map((r) =>
-    [r.name, r.role, r.team, r.mainObjectiveName, r.mainObjectiveProgress, r.activeTaskCount, r.hoursObjectiveWork, r.hoursMeeting, r.hoursMisc, r.utilizationPercent]
+    [r.name, r.role, r.team, r.mainObjectiveName, r.mainObjectiveProgress, r.activeTaskCount, r.hoursObjectiveWork, r.utilizationPercent]
       .map((c) => `"${String(c).replace(/"/g, '""')}"`)
       .join(','),
   )
@@ -149,7 +138,7 @@ export function PeoplePage() {
   }, [])
 
   useEffect(() => {
-    void load()
+    queueMicrotask(() => void load())
   }, [load])
 
   const filteredSortedRows = useMemo(() => {
@@ -268,16 +257,6 @@ export function PeoplePage() {
               </div>
             </div>
           </MetricCard>
-          <MetricCard label="本周会议时长" sub="misc_work · meeting">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-3">
-                <span className="flex size-11 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
-                  <Clock className="size-6" aria-hidden />
-                </span>
-                <span className="text-3xl font-semibold tabular-nums">{kpis.weeklyMeetingHoursTotal} h</span>
-              </div>
-            </div>
-          </MetricCard>
         </div>
       ) : null}
 
@@ -286,6 +265,13 @@ export function PeoplePage() {
           title={`成员列表 (${filteredSortedRows.length})`}
           action={
             <div className="flex flex-wrap items-center gap-2">
+              <Link
+                to="/people/manage"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--goalops-primary)] bg-[var(--goalops-primary-soft)] px-3 py-2 text-sm font-semibold text-[var(--goalops-primary)] shadow-sm hover:opacity-90"
+              >
+                <Users className="size-4" aria-hidden />
+                管理团队成员
+              </Link>
               <div className="relative">
                 <select
                   value={sortKey}

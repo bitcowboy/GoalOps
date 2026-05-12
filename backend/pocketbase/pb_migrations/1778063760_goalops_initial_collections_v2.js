@@ -238,43 +238,9 @@ migrate(
     })
     app.save(blockers)
 
-    // --- misc_work ---
-    const miscWork = new Collection({
-      type: 'base',
-      name: 'misc_work',
-      listRule: open,
-      viewRule: open,
-      createRule: open,
-      updateRule: open,
-      deleteRule: open,
-      fields: [
-        { type: 'text', name: 'title', required: true },
-        {
-          type: 'relation',
-          name: 'member',
-          required: true,
-          maxSelect: 1,
-          collectionId: membersCol.id,
-          cascadeDelete: false,
-        },
-        {
-          type: 'select',
-          name: 'kind',
-          required: true,
-          maxSelect: 1,
-          values: [
-            { value: 'meeting', text: '会议' },
-            { value: 'ad_hoc', text: '临时/杂事' },
-          ],
-        },
-        { type: 'number', name: 'hours', min: 0, max: 200, onlyInt: false },
-      ],
-    })
-    app.save(miscWork)
   },
   (app) => {
     const names = [
-      'misc_work',
       'blockers',
       'core_documents',
       'deliverables',
