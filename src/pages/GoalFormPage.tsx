@@ -77,8 +77,6 @@ const emptyDraft: ObjectiveFormDraftFields = {
   status: '',
   priority: 'P1',
   definition: '',
-  one_sentence_definition: '',
-  background: '',
   success_criteria: '',
   out_of_scope: '',
   start_date: '',
@@ -238,7 +236,7 @@ export function GoalFormPage() {
     const d = form.due_date.trim()
     if (s && d && s > d) return '开始日期不能晚于截止日期'
     if (isCreate) {
-      if (!form.one_sentence_definition.trim()) return '请填写一句话定义（目标描述摘要）'
+      if (!form.definition.trim()) return '请填写目标描述'
     }
     return null
   }, [form, isCreate])
@@ -332,7 +330,7 @@ export function GoalFormPage() {
         defPlain ? (
           <span className="block max-h-24 overflow-hidden whitespace-pre-wrap">{defPlain}</span>
         ) : (
-          <>一句话定义填写在下方；此处目标摘要将进入详情页正文区。</>
+          <>目标描述填写在下方；将进入详情页正文区。</>
         )
       ) : loadError ? (
         <>无法在表单中载入该目标的当前字段，请先处理上方错误信息后重试。</>
@@ -463,20 +461,6 @@ export function GoalFormPage() {
                   className={`${inputCls} mt-1.5`}
                   autoComplete="off"
                   required
-                  disabled={pageBusy}
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label htmlFor="goal-one" className={labelCls}>
-                  一句话定义 <span className="text-[var(--goalops-danger)]">*</span>
-                </label>
-                <input
-                  id="goal-one"
-                  type="text"
-                  value={form.one_sentence_definition}
-                  onChange={(e) => patch('one_sentence_definition', e.target.value)}
-                  className={`${inputCls} mt-1.5`}
-                  placeholder="简述要达成的目标（同步到 objectives.one_sentence_definition）"
                   disabled={pageBusy}
                 />
               </div>
@@ -676,35 +660,19 @@ export function GoalFormPage() {
             </div>
           </SectionCard>
 
-          <SectionCard title="目标定义">
-            <div className="grid gap-5 lg:grid-cols-2">
-              <div>
-                <label htmlFor="goal-definition" className={labelCls}>
-                  目标摘要（长文）
-                </label>
-                <textarea
-                  id="goal-definition"
-                  value={form.definition}
-                  onChange={(e) => patch('definition', e.target.value)}
-                  className={`${inputCls} mt-1.5 min-h-[140px] resize-y`}
-                  rows={5}
-                  disabled={pageBusy}
-                />
-              </div>
-              <div>
-                <label htmlFor="goal-background" className={labelCls}>
-                  目标描述
-                </label>
-                <textarea
-                  id="goal-background"
-                  value={form.background}
-                  onChange={(e) => patch('background', e.target.value)}
-                  className={`${inputCls} mt-1.5 min-h-[120px] resize-y lg:min-h-[140px]`}
-                  rows={5}
-                  disabled={pageBusy}
-                />
-              </div>
-            </div>
+          <SectionCard title="目标描述">
+            <label htmlFor="goal-definition" className={labelCls}>
+              目标描述 {isCreate ? <span className="text-[var(--goalops-danger)]">*</span> : null}
+            </label>
+            <textarea
+              id="goal-definition"
+              value={form.definition}
+              onChange={(e) => patch('definition', e.target.value)}
+              className={`${inputCls} mt-1.5 min-h-[180px] resize-y`}
+              rows={8}
+              placeholder="一句话概括目标，再补充背景与价值（同步到 objectives.definition）"
+              disabled={pageBusy}
+            />
           </SectionCard>
 
           <SectionCard title="范围">

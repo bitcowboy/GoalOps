@@ -1,7 +1,7 @@
 import type { FormEvent } from 'react'
 import type { RecordModel } from 'pocketbase'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { SectionCard } from '@/components'
 import { pb } from '@/services/pocketbase'
@@ -57,6 +57,8 @@ export function TaskFormPage() {
   const { id } = useParams<{ id?: string }>()
   const isEdit = Boolean(id)
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const preselectedObjectiveId = isEdit ? '' : (searchParams.get('objective') ?? '')
 
   const [draft, setDraft] = useState<TaskDraft>(emptyTaskDraft)
   const [objectives, setObjectives] = useState<RecordModel[]>([])
@@ -91,6 +93,8 @@ export function TaskFormPage() {
           estimate_hours: record.estimate_hours == null ? '' : String(record.estimate_hours),
           due_date: dateInput(record.due_date),
         }
+      } else if (preselectedObjectiveId && objectiveRows.some((o) => o.id === preselectedObjectiveId)) {
+        nextDraft.objective = preselectedObjectiveId
       }
 
       setObjectives(objectiveRows)
@@ -102,7 +106,7 @@ export function TaskFormPage() {
     } finally {
       setLoading(false)
     }
-  }, [id])
+  }, [id, preselectedObjectiveId])
 
   useEffect(() => {
     queueMicrotask(() => void load())
@@ -275,16 +279,16 @@ export function TaskFormPage() {
             <label className="md:col-span-2">
               <span className="text-xs font-semibold text-[var(--goalops-text-muted)]">前置任务</span>
               <select
-                multiple
-                className={`${selectCls} mt-1.5 min-h-36`}
-                value={draft.predecessor_ids}
-                onChange={(e) => patch('predecessor_ids', Array.from(e.target.selectedOptions).map((o) => o.value))}
+                className={`${selectCls} mt-1.5`}
+                value={draft.predecessor_ids[0] ?? ''}
+                onChange={(e) => patch('predecessor_ids', e.target.value ? [e.target.value] : [])}
               >
+                <option value="">无</option>
                 {validPredecessors.map((t) => (
                   <option key={t.id} value={t.id}>{String(t.title ?? t.id)}</option>
                 ))}
               </select>
-              <p className="mt-2 text-xs text-[var(--goalops-text-subtle)]">按住 Ctrl 可多选；前置任务未完成时会在任务页显示依赖风险。</p>
+              <p className="mt-2 text-xs text-[var(--goalops-text-subtle)]">选择一个前置任务；该前置任务未完成时会在任务页显示依赖风险。</p>
             </label>
           </div>
         </SectionCard>

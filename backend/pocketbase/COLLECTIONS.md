@@ -40,8 +40,7 @@
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `name` | text | 名称 |
-| `definition` | editor | 定义（富文本） |
-| `one_sentence_definition` | text | 一句话概括（创建表单） |
+| `definition` | editor | 目标描述（合并了原 `one_sentence_definition` 与 `background`；存储为带 `<p><br/>` 的 editor 文本，前端按纯文本读写） |
 | `progress_percent` | number | 进度 0–100 |
 | `status` | select | 含 `draft`（草稿）、`not_started` / `in_progress` / … |
 | `priority` | select | 如：`P0`–`P3` |
@@ -54,7 +53,6 @@
 | `start_date` | date | 开始 |
 | `due_date` | date | 截止 |
 | `display_code` | text | 展示用编码（如 `OBJ-2025-024`） |
-| `background` | text | 目标描述 |
 | `success_criteria` | json | 历史字段，当前最小化 OKR 不展示且保存时写空数组 |
 | `out_of_scope` | json | 不属于本目标范围（字符串数组） |
 | `phase_timeline` | json | 历史字段，当前最小化 OKR 详情页不展示 |

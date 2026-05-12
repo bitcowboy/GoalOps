@@ -203,11 +203,11 @@ export type CreateObjectiveInput = {
   /** 必须是当前 PocketBase `objectives` 集合里允许的 value（常为英文 code，也可能是中文配置） */
   status: string
   priority: string
+  /**
+   * 合并后的目标描述（纯文本，多行）。
+   * 历史字段 `one_sentence_definition` 和 `background` 已在迁移 1778100300 中并入此字段。
+   */
   definition: string
-  /** Stored in objectives.one_sentence_definition */
-  one_sentence_definition: string
-  /** Plain text stored in `background` */
-  background: string
   /** One non-empty trimmed line → one array entry in PocketBase JSON field `success_criteria` */
   success_criteria: string
   /** One non-empty trimmed line → one array entry in JSON field `out_of_scope` */
@@ -277,8 +277,6 @@ export function objectiveDraftToCreateInput(draft: ObjectiveFormDraftFields): Cr
     status: coerceObjectiveStatusForWrite(draft.status),
     priority: draft.priority,
     definition: draft.definition,
-    one_sentence_definition: draft.one_sentence_definition,
-    background: draft.background,
     success_criteria: '',
     out_of_scope: draft.out_of_scope,
     start_date: draft.start_date,
@@ -385,8 +383,6 @@ export function objectiveRecordToFormDraft(record: RecordModel): ObjectiveFormDr
     status: coerceObjectiveStatusForWrite(String(record.status ?? '')),
     priority: String(record.priority ?? '').trim(),
     definition: editorToPlainText(String(record.definition ?? '')),
-    one_sentence_definition: String(record.one_sentence_definition ?? '').trim(),
-    background: String(record.background ?? ''),
     success_criteria: '',
     out_of_scope: linesFieldFromRecord(record, 'out_of_scope'),
     start_date: pbValueToDateInput(record.start_date),
@@ -501,11 +497,10 @@ function buildObjectiveWritePayload(input: CreateObjectiveInput): Record<string,
     priority: input.priority,
   }
 
-  const oneLine = input.one_sentence_definition.trim()
-  const defLegacy = input.definition.trim()
-  const definitionSource = oneLine || defLegacy
-  body.definition = definitionSource ? plainTextToEditorHtml(definitionSource) : ''
-  body.one_sentence_definition = oneLine
+  // `definition` 现为合并后的纯文本（多行）。仍写入 editor 字段（兼容 Admin TipTap），
+  // 通过 plainTextToEditorHtml 包一层 `<p>...<br/>...</p>`，便于 Admin 渲染换行。
+  const defText = input.definition.trim()
+  body.definition = defText ? plainTextToEditorHtml(defText) : ''
 
   const start = input.start_date.trim()
   const due = input.due_date.trim()
@@ -519,8 +514,6 @@ function buildObjectiveWritePayload(input: CreateObjectiveInput): Record<string,
   } else if (input.progress_percent !== null && input.progress_percent !== undefined) {
     body.progress_percent = clampPercent(input.progress_percent)
   }
-
-  body.background = input.background.trim()
 
   const outLines = normalizeObjectiveLinesField(input.out_of_scope)
   body.success_criteria = []

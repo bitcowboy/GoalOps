@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   Calendar,
   ListChecks,
@@ -114,6 +114,7 @@ type TasksUiState = {
 }
 
 export function TasksPage() {
+  const navigate = useNavigate()
   const [snapshot, setSnapshot] = useState<TasksBoardPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -556,7 +557,11 @@ export function TasksPage() {
                     pageSlice.map((t) => {
                       const pillTone = priorityPillTone(t.priority)
                       return (
-                        <tr key={t.id} className="bg-[var(--goalops-surface)] hover:bg-slate-50/80">
+                        <tr
+                          key={t.id}
+                          onClick={() => navigate(`/tasks/${t.id}`)}
+                          className="cursor-pointer bg-[var(--goalops-surface)] hover:bg-slate-50/80"
+                        >
                           <td className="whitespace-nowrap px-5 py-3">
                             <div className="flex max-w-[220px] items-center gap-2">
                               <span
@@ -575,7 +580,7 @@ export function TasksPage() {
                             )}
                           </td>
                           <td className="px-5 py-3 font-medium text-[var(--goalops-text)]">
-                            <Link to={`/tasks/${t.id}/edit`} className="hover:text-[var(--goalops-primary)] hover:underline">
+                            <Link to={`/tasks/${t.id}`} className="hover:text-[var(--goalops-primary)] hover:underline">
                               {t.title}
                             </Link>
                           </td>

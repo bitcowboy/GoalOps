@@ -1,10 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import {
-  BarChart3,
   Bell,
-  Calendar,
   ChevronDown,
-  LayoutDashboard,
   LayoutGrid,
   ListTodo,
   Search,
@@ -30,10 +27,6 @@ export function AppLayout() {
           <span className="text-lg font-semibold tracking-tight">GoalOps</span>
         </div>
         <nav className="flex flex-1 flex-col gap-0.5 p-3">
-          <NavLink to="/" end className={({ isActive }) => `${navRow} ${isActive ? navActive : ''}`}>
-            <LayoutDashboard className="size-[18px] shrink-0 opacity-80" />
-            概览
-          </NavLink>
           <NavLink to="/objectives" className={({ isActive }) => `${navRow} ${isActive ? navActive : ''}`}>
             <Target className="size-[18px] shrink-0 opacity-80" />
             目标
@@ -46,24 +39,6 @@ export function AppLayout() {
             <Users className="size-[18px] shrink-0 opacity-80" />
             团队
           </NavLink>
-          <button
-            type="button"
-            className={`${navRow} w-full cursor-default text-left opacity-70`}
-            disabled
-            aria-disabled="true"
-          >
-            <Calendar className="size-[18px] shrink-0 opacity-80" />
-            日程
-          </button>
-          <button
-            type="button"
-            className={`${navRow} w-full cursor-default text-left opacity-70`}
-            disabled
-            aria-disabled="true"
-          >
-            <BarChart3 className="size-[18px] shrink-0 opacity-80" />
-            报表
-          </button>
           <NavLink to="/settings" className={({ isActive }) => `${navRow} ${isActive ? navActive : ''}`}>
             <Settings className="size-[18px] shrink-0 opacity-80" />
             设置

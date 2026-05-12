@@ -20,6 +20,7 @@ export function ObjectiveDetailPage() {
   const [blockers, setBlockers] = useState<RecordModel[]>([])
   const [keyResults, setKeyResults] = useState<RecordModel[]>([])
   const [keyResultBusyId, setKeyResultBusyId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -103,6 +104,23 @@ export function ObjectiveDetailPage() {
     [id, loadDetail],
   )
 
+  const onDelete = useCallback(async () => {
+    if (!id || !objective) return
+    const name = String(objective.name ?? '')
+    const ok = window.confirm(
+      `确定删除目标「${name}」吗？\n\n该操作会级联删除目标下的任务、关键结果、卡点、交付物与核心文档，且不可恢复。`,
+    )
+    if (!ok) return
+    setDeleting(true)
+    try {
+      await pb.collection('objectives').delete(id)
+      navigate('/objectives', { replace: true })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      setDeleting(false)
+    }
+  }, [id, objective, navigate])
+
   if (!id) {
     return (
       <p className="text-sm text-[var(--goalops-warning)]" role="alert">
@@ -142,6 +160,8 @@ export function ObjectiveDetailPage() {
           keyResults={keyResults}
           onToggleKeyResult={onToggleKeyResult}
           keyResultBusyId={keyResultBusyId}
+          onDelete={onDelete}
+          deleting={deleting}
         />
       ) : null}
     </div>

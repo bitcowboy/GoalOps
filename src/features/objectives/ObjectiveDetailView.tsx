@@ -6,6 +6,8 @@ import {
   Circle,
   MoreHorizontal,
   Pencil,
+  Plus,
+  Trash2,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { MetricCard, ProgressBar, SectionCard, StatusPill } from '@/components'
@@ -34,6 +36,8 @@ type ObjectiveDetailViewProps = {
   keyResults: RecordModel[]
   onToggleKeyResult: (krId: string, nextChecked: boolean) => void | Promise<void>
   keyResultBusyId: string | null
+  onDelete: () => void | Promise<void>
+  deleting: boolean
 }
 
 function Avatar({
@@ -84,6 +88,8 @@ export function ObjectiveDetailView({
   keyResults,
   onToggleKeyResult,
   keyResultBusyId,
+  onDelete,
+  deleting,
 }: ObjectiveDetailViewProps) {
   const owner = obj.expand?.owner as RecordModel | undefined
   const ownerName = owner ? String(owner.name ?? '') : '—'
@@ -92,7 +98,9 @@ export function ObjectiveDetailView({
   const ownerInitials = initialsFromName(ownerName)
 
   const title = String(obj.name ?? '')
-  const subtitle = editorToPlainText(String(obj.definition ?? ''))
+  const definitionText = editorToPlainText(String(obj.definition ?? '')).trim()
+  // Header 副标题：取首段（按空行分隔的第一块），避免长文撑开顶部。
+  const subtitle = definitionText.split(/\n\s*\n/)[0] ?? ''
   const displayCode = String(obj.display_code ?? '').trim() || `目标 ID: ${obj.id}`
   const createdAt = formatDateTime(obj.created)
   const updatedAt = formatDateTime(obj.updated)
@@ -124,7 +132,6 @@ export function ObjectiveDetailView({
   const totalDays = calendarInclusiveDays(start, due)
   const remain = remainingCalendarDays(due)
 
-  const background = String(obj.background ?? '').trim()
   const outList = parseStringArray(obj.out_of_scope)
   const nextActions = parseNextActions(obj.next_actions)
 
@@ -175,6 +182,15 @@ export function ObjectiveDetailView({
               <Pencil className="size-4 text-[var(--goalops-text-muted)]" aria-hidden />
               编辑目标
             </Link>
+            <button
+              type="button"
+              onClick={() => void onDelete()}
+              disabled={deleting}
+              className="inline-flex items-center gap-2 rounded-lg border border-[var(--goalops-danger)]/30 bg-[var(--goalops-danger-soft)] px-3 py-2 text-sm font-medium text-[var(--goalops-danger)] shadow-sm hover:bg-[var(--goalops-danger)]/15 disabled:cursor-wait disabled:opacity-60"
+            >
+              <Trash2 className="size-4" aria-hidden />
+              {deleting ? '删除中…' : '删除目标'}
+            </button>
             <button
               type="button"
               className="inline-flex items-center gap-2 rounded-lg border border-[var(--goalops-border)] bg-[var(--goalops-surface)] px-3 py-2 text-sm font-medium text-[var(--goalops-text)] shadow-sm hover:bg-slate-50"
@@ -303,7 +319,7 @@ export function ObjectiveDetailView({
       <div className="grid gap-4 lg:grid-cols-2">
         <SectionCard title="目标描述">
           <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--goalops-text-muted)]">
-            {background || '—'}
+            {definitionText || '—'}
           </p>
         </SectionCard>
         <SectionCard title="不属于本目标范围">
@@ -325,7 +341,18 @@ export function ObjectiveDetailView({
       {/* Tables */}
       <div className="space-y-6">
         <div className="space-y-6">
-          <SectionCard title="关联任务">
+          <SectionCard
+            title="关联任务"
+            action={
+              <Link
+                to={`/tasks/new?objective=${encodeURIComponent(obj.id)}`}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--goalops-primary)] px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:opacity-95"
+              >
+                <Plus className="size-3.5" aria-hidden />
+                新建关联任务
+              </Link>
+            }
+          >
             <div className="-mx-5 overflow-x-auto">
               <table className="w-full min-w-[760px] border-collapse text-left text-sm">
                 <thead>
@@ -355,8 +382,15 @@ export function ObjectiveDetailView({
                       const st = String(t.status ?? '')
                       const pr = String(t.priority ?? '')
                       return (
-                        <tr key={t.id} className="bg-[var(--goalops-surface)]">
-                          <td className="px-5 py-3 font-medium text-[var(--goalops-text)]">{String(t.title ?? '')}</td>
+                        <tr key={t.id} className="bg-[var(--goalops-surface)] hover:bg-slate-50/80">
+                          <td className="px-5 py-3 font-medium text-[var(--goalops-text)]">
+                            <Link
+                              to={`/tasks/${t.id}`}
+                              className="hover:text-[var(--goalops-primary)] hover:underline"
+                            >
+                              {String(t.title ?? '')}
+                            </Link>
+                          </td>
                           <td className="max-w-[180px] px-5 py-3 text-sm text-[var(--goalops-text-muted)]">
                             {krLabel ? (
                               <span className="line-clamp-2 font-medium text-[var(--goalops-text)]">{krLabel}</span>

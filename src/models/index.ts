@@ -53,7 +53,6 @@ export interface Objective {
   dueDate: string
   /** 详情页扩展字段（可选，取决于后端是否已迁移） */
   displayCode?: string
-  background?: string
   successCriteria?: string[]
   outOfScope?: string[]
   phaseTimeline?: ObjectivePhaseStep[]
