@@ -1,0 +1,27 @@
+[Unit]
+Description=GoalOps MCP HTTP server
+After=network-online.target pocketbase.service
+Wants=network-online.target
+# pocketbase.service is a soft dep — MCP starts even if PB is briefly down,
+# and per-request calls just error until PB recovers.
+
+[Service]
+Type=simple
+User=goalops
+Group=goalops
+WorkingDirectory=/opt/goalops/mcp
+EnvironmentFile=/etc/goalops/mcp.env
+# `node` must be on PATH for the goalops user; install Node via NodeSource or
+# nvm-for-system. Hard-code the path here if you prefer:
+#   ExecStart=/usr/bin/node /opt/goalops/mcp/dist/index.js
+ExecStart=/usr/bin/node /opt/goalops/mcp/dist/index.js
+Restart=on-failure
+RestartSec=5
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

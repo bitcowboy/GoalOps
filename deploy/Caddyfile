@@ -1,0 +1,76 @@
+# GoalOps — Caddy v2 site config for goal.996007.fun
+#
+# Add this block to your existing Caddyfile (or `import` it). Caddy will fetch
+# and renew a Let's Encrypt cert automatically on first start.
+#
+# Layout:
+#   /            -> static SPA (Vite build in /var/www/goalops)
+#   /api/*       -> PocketBase REST + realtime SSE  (127.0.0.1:8090)
+#   /_/*         -> PocketBase Admin UI             (127.0.0.1:8090, basic_auth)
+#   /mcp         -> goalops-mcp Streamable HTTP     (127.0.0.1:8765, basic_auth)
+#
+# Replace the two `BCRYPT_HASH_HERE` lines below before reloading. Generate a
+# hash with:
+#   caddy hash-password
+# (paste the password twice; copy the `$2a$14$...` output it prints).
+
+goal.996007.fun {
+	encode zstd gzip
+
+	# --- PocketBase Admin UI -------------------------------------------------
+	# The admin console exposes superuser controls; lock it down even though
+	# the rest of the site is open. Anyone with PB superuser creds can already
+	# wipe data, so this is the *only* layer keeping random visitors out of /_/.
+	@pb_admin path /_/*
+	handle @pb_admin {
+		# Caddy < v2.8 uses `basicauth` (no underscore). v2.8+ added `basic_auth`
+		# as an alias; we stick with the older form for compatibility.
+		basicauth {
+			# Username `admin` is just a label; the bcrypt hash is what matters.
+			admin BCRYPT_HASH_FOR_PB_ADMIN
+		}
+		reverse_proxy 127.0.0.1:8090
+	}
+
+	# --- PocketBase REST + realtime -----------------------------------------
+	# /api/realtime is SSE; flush_interval -1 disables response buffering so
+	# events reach the browser immediately. The same setting is harmless for
+	# the regular REST calls.
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8090 {
+			flush_interval -1
+		}
+	}
+
+	# --- MCP Streamable HTTP -------------------------------------------------
+	# Shared bearer-ish auth for the whole team. Pick one username/password
+	# the team uses in their Claude client config (see deploy/README.md).
+	handle /mcp* {
+		basicauth {
+			goalops BCRYPT_HASH_FOR_MCP
+		}
+		reverse_proxy 127.0.0.1:8765 {
+			flush_interval -1
+		}
+	}
+
+	# --- Static SPA (catch-all) ---------------------------------------------
+	# Vite outputs hashed asset filenames, so cache them aggressively. The
+	# entry HTML must stay short-lived so deploys are picked up.
+	handle {
+		root * /var/www/goalops
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		header /index.html Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+
+	# Optional: access log. Comment out if you don't want disk writes.
+	log {
+		output file /var/log/caddy/goal.996007.fun.log {
+			roll_size 50MiB
+			roll_keep 5
+		}
+	}
+}

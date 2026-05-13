@@ -1,0 +1,28 @@
+[Unit]
+Description=GoalOps PocketBase
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=goalops
+Group=goalops
+WorkingDirectory=/opt/goalops/pocketbase
+# Bind only to loopback; Caddy fronts it on 443. If you ever want PB itself to
+# serve HTTPS directly, switch this to --http=0.0.0.0:8090 and drop Caddy from
+# the /api path — but you'd lose unified logs and basic_auth on /_.
+ExecStart=/opt/goalops/pocketbase/pocketbase serve --http=127.0.0.1:8090 --dir=/opt/goalops/pocketbase/pb_data --migrationsDir=/opt/goalops/pocketbase/pb_migrations
+Restart=on-failure
+RestartSec=5
+# PB writes to pb_data/. Everything else is read-only as far as we care.
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+# pb_data must be writable; whitelist it explicitly.
+ReadWritePaths=/opt/goalops/pocketbase/pb_data
+# PB occasionally opens many WAL/journal files under load.
+LimitNOFILE=8192
+
+[Install]
+WantedBy=multi-user.target
