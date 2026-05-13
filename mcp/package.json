@@ -1,0 +1,27 @@
+{
+  "name": "goalops-mcp",
+  "version": "0.1.0",
+  "description": "MCP server exposing GoalOps PocketBase collections (objectives, tasks, key_results, blockers, next_actions) as tools.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "goalops-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "goalops": "file:..",
+    "pocketbase": "^0.21.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}
