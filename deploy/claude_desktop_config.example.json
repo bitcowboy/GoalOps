@@ -1,0 +1,48 @@
+{
+  "_comment_remote": [
+    "GoalOps MCP — Claude Desktop config.",
+    "",
+    "Two options below; pick ONE block under mcpServers and delete the other.",
+    "",
+    "  goalops          — uses `mcp-remote` (npm) to bridge stdio<->HTTP. Most",
+    "                     compatible across Claude Desktop versions. Requires",
+    "                     Node 20+ on the user's machine (npx pulls mcp-remote",
+    "                     on first run). The first run prints a localhost URL to",
+    "                     finish OAuth if the server speaks OAuth; we don't, so",
+    "                     it falls straight through to basic_auth.",
+    "  goalops-native   — direct HTTP transport supported by recent Claude",
+    "                     Desktop. No Node required, but only works on builds",
+    "                     that ship the `streamable-http` client. If you see",
+    "                     'unknown transport' in logs, use the mcp-remote one.",
+    "",
+    "Replace REPLACE_ME_BASE64 with `base64(username:password)` for the team",
+    "credentials your admin set in Caddyfile. On Windows PowerShell:",
+    "  [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('goalops:THE_PASSWORD'))",
+    "On macOS / Linux:",
+    "  printf 'goalops:THE_PASSWORD' | base64",
+    "",
+    "Config file location:",
+    "  Windows : %APPDATA%\\Claude\\claude_desktop_config.json",
+    "  macOS   : ~/Library/Application Support/Claude/claude_desktop_config.json",
+    "After saving, fully quit Claude Desktop (system tray -> Quit) and reopen."
+  ],
+  "mcpServers": {
+    "goalops": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://goal.996007.fun/mcp",
+        "--header",
+        "Authorization:Basic REPLACE_ME_BASE64"
+      ]
+    },
+    "goalops-native": {
+      "type": "http",
+      "url": "https://goal.996007.fun/mcp",
+      "headers": {
+        "Authorization": "Basic REPLACE_ME_BASE64"
+      }
+    }
+  }
+}
