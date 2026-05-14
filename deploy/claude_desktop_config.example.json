@@ -1,48 +1,58 @@
 {
   "_comment_remote": [
-    "GoalOps MCP — Claude Desktop config.",
+    "GoalOps MCP — Claude Desktop config (Windows + macOS).",
     "",
-    "Two options below; pick ONE block under mcpServers and delete the other.",
+    "Claude Desktop's mcpServers schema only supports stdio MCP servers",
+    "(command + args). Direct `type: http` configs work in Claude Code but",
+    "are rejected by Claude Desktop as 'invalid configuration'. So we bridge",
+    "the remote HTTP MCP through `mcp-remote` (Anthropic's stdio<->HTTP",
+    "adapter, pulled via npx on first run).",
     "",
-    "  goalops          — uses `mcp-remote` (npm) to bridge stdio<->HTTP. Most",
-    "                     compatible across Claude Desktop versions. Requires",
-    "                     Node 20+ on the user's machine (npx pulls mcp-remote",
-    "                     on first run). The first run prints a localhost URL to",
-    "                     finish OAuth if the server speaks OAuth; we don't, so",
-    "                     it falls straight through to basic_auth.",
-    "  goalops-native   — direct HTTP transport supported by recent Claude",
-    "                     Desktop. No Node required, but only works on builds",
-    "                     that ship the `streamable-http` client. If you see",
-    "                     'unknown transport' in logs, use the mcp-remote one.",
+    "Requirements:",
+    "  - Node 20+ on the user's machine (winget install OpenJS.NodeJS.LTS)",
+    "  - Network access to https://goal.996007.fun/mcp (basic_auth credentials",
+    "    from your admin)",
     "",
-    "Replace REPLACE_ME_BASE64 with `base64(username:password)` for the team",
-    "credentials your admin set in Caddyfile. On Windows PowerShell:",
-    "  [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('goalops:THE_PASSWORD'))",
-    "On macOS / Linux:",
-    "  printf 'goalops:THE_PASSWORD' | base64",
+    "Windows note: Claude Desktop on Windows spawns the `command` directly,",
+    "without going through cmd.exe, so it can't resolve npx.cmd by name. We",
+    "wrap with `cmd /c npx ...` to make this reliable. macOS users can drop",
+    "the cmd /c wrapper and use `\"command\": \"npx\"` directly.",
+    "",
+    "Replace REPLACE_ME_BASE64 with `base64(username:password)`.",
+    "  Windows  : [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('goalops:THE_PASSWORD'))",
+    "  macOS    : printf 'goalops:THE_PASSWORD' | base64",
     "",
     "Config file location:",
     "  Windows : %APPDATA%\\Claude\\claude_desktop_config.json",
     "  macOS   : ~/Library/Application Support/Claude/claude_desktop_config.json",
-    "After saving, fully quit Claude Desktop (system tray -> Quit) and reopen."
+    "",
+    "After saving, fully quit Claude Desktop (system tray -> Quit on Windows,",
+    "menu bar -> Quit on macOS) and reopen. The first connection takes a few",
+    "seconds while npx downloads mcp-remote."
   ],
   "mcpServers": {
     "goalops": {
-      "command": "npx",
+      "command": "cmd",
       "args": [
+        "/c",
+        "npx",
         "-y",
         "mcp-remote",
         "https://goal.996007.fun/mcp",
         "--header",
-        "Authorization:Basic REPLACE_ME_BASE64"
+        "Authorization: Basic REPLACE_ME_BASE64"
       ]
-    },
-    "goalops-native": {
-      "type": "http",
-      "url": "https://goal.996007.fun/mcp",
-      "headers": {
-        "Authorization": "Basic REPLACE_ME_BASE64"
-      }
     }
-  }
+  },
+  "_comment_macos": [
+    "On macOS, replace the `goalops` block above with this simpler form:",
+    "  \"goalops\": {",
+    "    \"command\": \"npx\",",
+    "    \"args\": [",
+    "      \"-y\", \"mcp-remote\",",
+    "      \"https://goal.996007.fun/mcp\",",
+    "      \"--header\", \"Authorization: Basic REPLACE_ME_BASE64\"",
+    "    ]",
+    "  }"
+  ]
 }
