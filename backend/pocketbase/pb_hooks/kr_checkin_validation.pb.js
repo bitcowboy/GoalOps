@@ -13,11 +13,16 @@
  * "显式传"通过 e.requestInfo().body 检测，避开 number/bool 字段服务端默认 0/false
  * 与人工填 0/false 不可区分的问题。
  *
+ * 创建 vs 更新：
+ * - 创建时（isCreate=true）强校验「必须显式传度量字段」 + 「不能跨类型混填」
+ * - 更新时（isCreate=false）跳过「必须显式传」检查（用户可能只 PATCH 一个 confidence），
+ *   但仍然强校验「不能跨类型混填」，防止把 metric KR 的 check-in 改成有 is_completed 等
+ *
  * 注意：goja 引擎不会把同文件其它顶层函数透出到 routerAdd / onXxx 回调闭包里，
- * 因此把校验逻辑内联到回调里。
+ * 因此把校验逻辑内联到 const 表达式工厂里。
  */
 
-const checkinHandler = (e) => {
+const makeCheckinHandler = (isCreate) => (e) => {
   const record = e.record
   if (!record) {
     e.next()
@@ -74,7 +79,7 @@ const checkinHandler = (e) => {
   const sentCompleted = sentKey('is_completed')
 
   if (krType === 'metric') {
-    if (!sentCurrent) {
+    if (isCreate && !sentCurrent) {
       throw new BadRequestError('metric KR requires current_value on its check-in')
     }
     if (sentPercent) {
@@ -84,7 +89,7 @@ const checkinHandler = (e) => {
       throw new BadRequestError('metric KR check-in must not set is_completed')
     }
   } else if (krType === 'checkbox') {
-    if (!sentCompleted) {
+    if (isCreate && !sentCompleted) {
       throw new BadRequestError('checkbox KR requires is_completed on its check-in')
     }
     if (sentCurrent) {
@@ -94,7 +99,7 @@ const checkinHandler = (e) => {
       throw new BadRequestError('checkbox KR check-in must not set progress_percent')
     }
   } else if (krType === 'milestone') {
-    if (!sentPercent) {
+    if (isCreate && !sentPercent) {
       throw new BadRequestError('milestone KR requires progress_percent on its check-in')
     }
     if (sentCurrent) {
@@ -117,5 +122,5 @@ const checkinHandler = (e) => {
   e.next()
 }
 
-onRecordCreateRequest(checkinHandler, 'kr_checkins')
-onRecordUpdateRequest(checkinHandler, 'kr_checkins')
+onRecordCreateRequest(makeCheckinHandler(true), 'kr_checkins')
+onRecordUpdateRequest(makeCheckinHandler(false), 'kr_checkins')
