@@ -5,6 +5,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ObjectiveDetailView } from '@/features/objectives'
 import { clampPercent } from '@/features/objectives/objectiveDetailUtils'
 import { recomputeObjectiveProgressFromKeyResults } from '@/features/objectives/createObjective'
+import { KRForm } from '@/features/keyResults'
 import { pb } from '@/services/pocketbase'
 
 type DetailLocationState = { objectiveUpdated?: boolean }
@@ -24,6 +25,8 @@ export function ObjectiveDetailPage() {
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  /** KR modal state. `kr === null` 表示新建；`kr === RecordModel` 表示编辑 */
+  const [krFormOpen, setKrFormOpen] = useState<{ kr: RecordModel | null } | null>(null)
 
   const loadDetail = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -116,6 +119,29 @@ export function ObjectiveDetailPage() {
     [id, loadDetail],
   )
 
+  const onCreateKeyResult = useCallback(() => {
+    setKrFormOpen({ kr: null })
+  }, [])
+
+  const onEditKeyResult = useCallback((kr: RecordModel) => {
+    setKrFormOpen({ kr })
+  }, [])
+
+  const afterKRChange = useCallback(async () => {
+    setKrFormOpen(null)
+    if (!id) return
+    // 关闭后异步刷新 + 同步 objective 进度
+    const pct = await recomputeObjectiveProgressFromKeyResults(id)
+    if (pct !== null) {
+      try {
+        await pb.collection('objectives').update(id, { progress_percent: clampPercent(pct) })
+      } catch {
+        /* 忽略：进度同步失败不阻塞 UI */
+      }
+    }
+    await loadDetail({ silent: true })
+  }, [id, loadDetail])
+
   const onDelete = useCallback(async () => {
     if (!id || !objective) return
     const name = String(objective.name ?? '')
@@ -173,8 +199,21 @@ export function ObjectiveDetailPage() {
           members={members}
           onToggleKeyResult={onToggleKeyResult}
           keyResultBusyId={keyResultBusyId}
+          onCreateKeyResult={onCreateKeyResult}
+          onEditKeyResult={onEditKeyResult}
           onDelete={onDelete}
           deleting={deleting}
+        />
+      ) : null}
+
+      {krFormOpen ? (
+        <KRForm
+          objectiveId={id}
+          members={members}
+          existing={krFormOpen.kr ?? undefined}
+          onSuccess={() => void afterKRChange()}
+          onDelete={() => void afterKRChange()}
+          onCancel={() => setKrFormOpen(null)}
         />
       ) : null}
     </div>

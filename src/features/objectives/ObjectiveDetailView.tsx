@@ -41,6 +41,8 @@ type ObjectiveDetailViewProps = {
   members: Array<{ id: string; name: string }>
   onToggleKeyResult: (krId: string, nextChecked: boolean) => void | Promise<void>
   keyResultBusyId: string | null
+  onCreateKeyResult: () => void
+  onEditKeyResult: (kr: RecordModel) => void
   onDelete: () => void | Promise<void>
   deleting: boolean
 }
@@ -93,11 +95,13 @@ function KeyResultRow({
   kr,
   members,
   onToggle,
+  onEdit,
   busy,
 }: {
   kr: RecordModel
   members: Array<{ id: string; name: string }>
   onToggle: (krId: string, nextChecked: boolean) => void | Promise<void>
+  onEdit: (kr: RecordModel) => void
   busy: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -178,6 +182,15 @@ function KeyResultRow({
         </div>
         <div className="flex items-center gap-2 sm:mt-0.5">
           {busy ? <span className="text-[11px] text-[var(--goalops-text-subtle)]">保存中…</span> : null}
+          <button
+            type="button"
+            onClick={() => onEdit(kr)}
+            className="inline-flex items-center gap-1 rounded-md border border-[var(--goalops-border)] bg-white px-2 py-1 text-[11px] font-medium text-[var(--goalops-text-muted)] hover:bg-slate-50"
+            title="编辑 KR"
+          >
+            <Pencil className="size-3.5" />
+            编辑
+          </button>
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
@@ -284,6 +297,8 @@ export function ObjectiveDetailView({
   members,
   onToggleKeyResult,
   keyResultBusyId,
+  onCreateKeyResult,
+  onEditKeyResult,
   onDelete,
   deleting,
 }: ObjectiveDetailViewProps) {
@@ -465,15 +480,23 @@ export function ObjectiveDetailView({
       <SectionCard
         title="关键结果"
         action={
-          <Link to="/tasks" className="text-xs font-semibold text-[var(--goalops-primary)] hover:underline">
-            任务页可按 KR 筛选
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link to="/tasks" className="text-xs font-semibold text-[var(--goalops-primary)] hover:underline">
+              任务页可按 KR 筛选
+            </Link>
+            <button
+              type="button"
+              onClick={onCreateKeyResult}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--goalops-primary)] px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:opacity-95"
+            >
+              <Plus className="size-3.5" aria-hidden />
+              新建 KR
+            </button>
+          </div>
         }
       >
         {sortKeyResultsByOrder(keyResults).length === 0 ? (
-          <p className="text-sm text-[var(--goalops-text-muted)]">
-            暂无关键结果条目。使用「编辑目标」添加 KR。
-          </p>
+          <p className="text-sm text-[var(--goalops-text-muted)]">暂无关键结果。点击右上「新建 KR」开始。</p>
         ) : (
           <ul className="space-y-2">
             {sortKeyResultsByOrder(keyResults).map((kr) => (
@@ -482,6 +505,7 @@ export function ObjectiveDetailView({
                 kr={kr}
                 members={members}
                 onToggle={onToggleKeyResult}
+                onEdit={onEditKeyResult}
                 busy={keyResultBusyId === kr.id}
               />
             ))}
