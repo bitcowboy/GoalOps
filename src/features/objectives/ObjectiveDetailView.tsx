@@ -1,8 +1,11 @@
 import type { RecordModel } from 'pocketbase'
+import { useState } from 'react'
 import {
   ArrowLeft,
   Box,
   Calendar,
+  ChevronDown,
+  ChevronUp,
   Circle,
   MoreHorizontal,
   Pencil,
@@ -11,8 +14,9 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { MetricCard, ProgressBar, SectionCard, StatusPill } from '@/components'
-import type { ObjectiveNextActionJson } from '@/models'
+import type { KRType, ObjectiveNextActionJson } from '@/models'
 import { krCompletionFromRows } from '@/features/objectives/keyResults'
+import { KRCheckinPanel, krTypeLabel } from '@/features/checkins'
 import {
   calendarInclusiveDays,
   clampPercent,
@@ -34,6 +38,7 @@ type ObjectiveDetailViewProps = {
   tasks: RecordModel[]
   blockers: RecordModel[]
   keyResults: RecordModel[]
+  members: Array<{ id: string; name: string }>
   onToggleKeyResult: (krId: string, nextChecked: boolean) => void | Promise<void>
   keyResultBusyId: string | null
   onDelete: () => void | Promise<void>
@@ -72,6 +77,196 @@ function TaskStatusDot({ status }: { status: string }) {
   return <span className={`inline-block size-2 rounded-full ${cls}`} aria-hidden />
 }
 
+function krTypeOf(kr: RecordModel): KRType {
+  const raw = String(kr.kr_type ?? '').trim()
+  if (raw === 'metric' || raw === 'milestone') return raw
+  return 'checkbox'
+}
+
+function numOrNull(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+function KeyResultRow({
+  kr,
+  members,
+  onToggle,
+  busy,
+}: {
+  kr: RecordModel
+  members: Array<{ id: string; name: string }>
+  onToggle: (krId: string, nextChecked: boolean) => void | Promise<void>
+  busy: boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [derivedLatest, setDerivedLatest] = useState<{
+    latestValue: number | null
+    latestConfidence: number | null
+    score: number | null
+  } | null>(null)
+
+  const krType = krTypeOf(kr)
+  const done = Boolean(kr.is_completed)
+  const nm = String(kr.name ?? '').trim() || '（未命名）'
+  const ownerKr = kr.expand?.owner as RecordModel | undefined
+  const krOwnerNm = ownerKr ? String(ownerKr.name ?? '').trim() : ''
+  const note = String((kr as RecordModel & { note?: unknown }).note ?? '').trim()
+
+  const startVal = numOrNull(kr.start_value)
+  const targetVal = numOrNull(kr.target_value)
+  const unit = String(kr.unit ?? '').trim()
+  const direction = (kr.direction === 'decrease' ? 'decrease' : kr.direction === 'increase' ? 'increase' : null) as
+    | 'increase'
+    | 'decrease'
+    | null
+
+  const latestValue = derivedLatest?.latestValue ?? null
+  const score = derivedLatest?.score ?? null
+
+  return (
+    <li className="rounded-xl border border-[var(--goalops-border)] bg-slate-50/40 p-3">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-3">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          {krType === 'checkbox' ? (
+            <input
+              type="checkbox"
+              className="mt-1 size-4 shrink-0 rounded border-[var(--goalops-border)] text-[var(--goalops-primary)]"
+              checked={done}
+              disabled={busy}
+              onChange={(e) => void onToggle(kr.id, e.target.checked)}
+              aria-label={`勾选完成：${nm}`}
+            />
+          ) : (
+            <span className="mt-1 inline-flex size-4 shrink-0 items-center justify-center rounded border border-[var(--goalops-border)] bg-white text-[10px] text-[var(--goalops-text-subtle)]">
+              {krType === 'metric' ? 'm' : '◆'}
+            </span>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`text-sm font-medium ${
+                  krType === 'checkbox' && done
+                    ? 'text-[var(--goalops-text-subtle)] line-through'
+                    : 'text-[var(--goalops-text)]'
+                }`}
+              >
+                {nm}
+              </span>
+              <StatusPill tone={krType === 'metric' ? 'success' : krType === 'milestone' ? 'warning' : 'neutral'}>
+                {krTypeLabel(krType)}
+              </StatusPill>
+            </div>
+            {krType === 'metric' && startVal != null && targetVal != null ? (
+              <MetricKRSummary
+                start={startVal}
+                latest={latestValue}
+                target={targetVal}
+                unit={unit}
+                score={score}
+                direction={direction}
+              />
+            ) : null}
+            {krOwnerNm ? (
+              <div className="mt-1 text-xs text-[var(--goalops-text-muted)]">KR 负责人 · {krOwnerNm}</div>
+            ) : null}
+            {note ? (
+              <div className="mt-1 text-xs leading-relaxed text-[var(--goalops-text-muted)]">{note}</div>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 sm:mt-0.5">
+          {busy ? <span className="text-[11px] text-[var(--goalops-text-subtle)]">保存中…</span> : null}
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="inline-flex items-center gap-1 rounded-md border border-[var(--goalops-border)] bg-white px-2 py-1 text-[11px] font-medium text-[var(--goalops-text-muted)] hover:bg-slate-50"
+          >
+            Check-ins
+            {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+          </button>
+        </div>
+      </div>
+
+      {expanded ? (
+        <KRCheckinPanel
+          kr={{
+            id: kr.id,
+            name: nm,
+            kr_type: krType,
+            owner: typeof kr.owner === 'string' ? kr.owner : undefined,
+            start_value: startVal,
+            target_value: targetVal,
+            unit,
+            direction,
+          }}
+          members={members}
+          onChange={(d) => {
+            if (d) {
+              setDerivedLatest({
+                latestValue: d.latest_value,
+                latestConfidence: d.latest_confidence,
+                score: d.score,
+              })
+            }
+          }}
+        />
+      ) : null}
+    </li>
+  )
+}
+
+function MetricKRSummary({
+  start,
+  latest,
+  target,
+  unit,
+  score,
+  direction,
+}: {
+  start: number
+  latest: number | null
+  target: number
+  unit: string
+  score: number | null
+  direction: 'increase' | 'decrease' | null
+}) {
+  // 进度百分比可视化：把 latest 在 [start, target] 区间内的位置算出来
+  const denom = target - start
+  let pct = 0
+  if (latest != null && denom !== 0) {
+    const raw = direction === 'decrease' ? (start - latest) / (start - target) : (latest - start) / (target - start)
+    pct = Math.max(0, Math.min(1, raw)) * 100
+  }
+  return (
+    <div className="mt-1.5 space-y-1">
+      <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--goalops-text-muted)]">
+        <span>start: <span className="font-semibold text-[var(--goalops-text)]">{start}</span>{unit}</span>
+        <span>→</span>
+        <span>
+          latest:{' '}
+          <span className="font-semibold text-[var(--goalops-text)]">{latest != null ? latest : '—'}</span>
+          {unit}
+        </span>
+        <span>→</span>
+        <span>target: <span className="font-semibold text-[var(--goalops-text)]">{target}</span>{unit}</span>
+        {score != null ? (
+          <span className="ml-auto inline-flex rounded-md bg-[var(--goalops-success-soft)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--goalops-success)]">
+            score {Math.round(score * 100)}%
+          </span>
+        ) : null}
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+        <div
+          className="h-full bg-[var(--goalops-primary)] transition-all"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
 function sortKeyResultsByOrder(records: RecordModel[]): RecordModel[] {
   return [...records].sort((a, b) => {
     const sa = typeof a.sort_order === 'number' ? a.sort_order : Number(a.sort_order ?? 0)
@@ -86,6 +281,7 @@ export function ObjectiveDetailView({
   tasks,
   blockers,
   keyResults,
+  members,
   onToggleKeyResult,
   keyResultBusyId,
   onDelete,
@@ -106,16 +302,20 @@ export function ObjectiveDetailView({
   const updatedAt = formatDateTime(obj.updated)
 
   const krNamed = keyResults.filter((kr) => String(kr.name ?? '').trim())
+  // 仅对 checkbox 类 KR 统计 "x / y" 完成数，仅用于头部 label。
+  const checkboxKRs = krNamed.filter((kr) => {
+    const t = String(kr.kr_type ?? 'checkbox')
+    return t !== 'metric' && t !== 'milestone'
+  })
   const krAgg = krCompletionFromRows(
-    krNamed.map((kr) => ({
+    checkboxKRs.map((kr) => ({
       name: String(kr.name ?? ''),
       is_completed: Boolean(kr.is_completed),
     })),
   )
-  const krBasedProgress =
-    krNamed.length > 0 && krAgg.percent !== null ? clampPercent(krAgg.percent) : null
 
-  const progress = krBasedProgress ?? clampPercent(obj.progress_percent)
+  // 进度直接展示 objective.progress_percent（recomputeObjectiveProgressFromKeyResults 已统一更新）
+  const progress = clampPercent(obj.progress_percent)
   const deltaRaw = obj.progress_delta_percent
   const delta =
     typeof deltaRaw === 'number' && !Number.isNaN(deltaRaw)
@@ -211,12 +411,12 @@ export function ObjectiveDetailView({
 
       {/* Summary metrics */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label={krAgg.total > 0 ? `总体进度（KR ${krAgg.completed}/${krAgg.total}）` : '总体进度'}>
+        <MetricCard label={krAgg.total > 0 ? `总体进度（Checkbox KR ${krAgg.completed}/${krAgg.total}）` : '总体进度'}>
           <div className="text-3xl font-semibold tabular-nums text-[var(--goalops-text)]">{progress}%</div>
           <div className="mt-2 space-y-2">
             <ProgressBar value={progress} />
-            {krBasedProgress != null ? (
-              <span className="text-xs text-[var(--goalops-text-muted)]">按已命名 KR 勾选完成率计算；与 PocketBase progress 对齐同步。</span>
+            {krNamed.length > 0 ? (
+              <span className="text-xs text-[var(--goalops-text-muted)]">按已命名 KR（checkbox 勾选 / milestone progress_percent / metric score）平均。</span>
             ) : null}
             {delta != null && !Number.isNaN(delta) ? (
               <span className="inline-flex rounded-md bg-[var(--goalops-success-soft)] px-2 py-0.5 text-xs font-semibold text-[var(--goalops-success)]">
@@ -263,7 +463,7 @@ export function ObjectiveDetailView({
       </div>
 
       <SectionCard
-        title="关键结果（Checkbox）"
+        title="关键结果"
         action={
           <Link to="/tasks" className="text-xs font-semibold text-[var(--goalops-primary)] hover:underline">
             任务页可按 KR 筛选
@@ -272,45 +472,19 @@ export function ObjectiveDetailView({
       >
         {sortKeyResultsByOrder(keyResults).length === 0 ? (
           <p className="text-sm text-[var(--goalops-text-muted)]">
-            暂无关键结果条目。使用「编辑目标」添加 Checkbox KR。
+            暂无关键结果条目。使用「编辑目标」添加 KR。
           </p>
         ) : (
           <ul className="space-y-2">
-            {sortKeyResultsByOrder(keyResults).map((kr) => {
-              const done = Boolean(kr.is_completed)
-              const nm = String(kr.name ?? '').trim() || '（未命名）'
-              const ownerKr = kr.expand?.owner as RecordModel | undefined
-              const krOwnerNm = ownerKr ? String(ownerKr.name ?? '').trim() : ''
-              const note = String((kr as RecordModel & { note?: unknown }).note ?? '').trim()
-              const busy = keyResultBusyId === kr.id
-              return (
-                <li key={kr.id}>
-                  <label className="flex cursor-pointer flex-col gap-1 rounded-xl border border-[var(--goalops-border)] bg-slate-50/40 p-3 hover:bg-slate-50 sm:flex-row sm:items-start sm:gap-3">
-                    <div className="flex min-w-0 flex-1 items-start gap-3">
-                      <input
-                        type="checkbox"
-                        className="mt-1 size-4 shrink-0 rounded border-[var(--goalops-border)] text-[var(--goalops-primary)]"
-                        checked={done}
-                        disabled={busy}
-                        onChange={(e) => void onToggleKeyResult(kr.id, e.target.checked)}
-                      />
-                      <div className="min-w-0">
-                        <span className={`text-sm font-medium ${done ? 'text-[var(--goalops-text-subtle)] line-through' : 'text-[var(--goalops-text)]'}`}>
-                          {nm}
-                        </span>
-                        {krOwnerNm ? (
-                          <div className="mt-1 text-xs text-[var(--goalops-text-muted)]">KR 负责人 · {krOwnerNm}</div>
-                        ) : null}
-                        {note ? (
-                          <div className="mt-1 text-xs leading-relaxed text-[var(--goalops-text-muted)]">{note}</div>
-                        ) : null}
-                      </div>
-                    </div>
-                    {busy ? <span className="text-[11px] text-[var(--goalops-text-subtle)] sm:mt-1">保存中…</span> : null}
-                  </label>
-                </li>
-              )
-            })}
+            {sortKeyResultsByOrder(keyResults).map((kr) => (
+              <KeyResultRow
+                key={kr.id}
+                kr={kr}
+                members={members}
+                onToggle={onToggleKeyResult}
+                busy={keyResultBusyId === kr.id}
+              />
+            ))}
           </ul>
         )}
       </SectionCard>

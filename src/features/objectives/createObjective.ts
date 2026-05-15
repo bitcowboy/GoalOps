@@ -424,12 +424,41 @@ export async function fetchKeyResultsForObjective(objectiveId: string): Promise<
   })
 }
 
+/**
+ * 按 KR 类型综合算 Objective 进度，每条已命名 KR 平均权重：
+ * - checkbox  → is_completed 折 100 / 0
+ * - milestone → 最近一条 check-in 的 progress_percent（无则 0）
+ * - metric    → 派生 score * 100（无则 0）
+ *
+ * 无已命名 KR 时返回 null。
+ */
 export async function recomputeObjectiveProgressFromKeyResults(objectiveId: string): Promise<number | null> {
   try {
     const list = await fetchKeyResultsForObjective(objectiveId)
-    return krCompletionFromRows(
-      list.map((r) => ({ name: String(r.name ?? ''), is_completed: Boolean(r.is_completed) })),
-    ).percent
+    const named = list.filter((r) => String(r.name ?? '').trim().length > 0)
+    if (named.length === 0) return null
+
+    const base = (pb.baseUrl ?? '').replace(/\/+$/, '')
+    const perKr = await Promise.all(
+      named.map(async (r) => {
+        const t = String(r.kr_type ?? 'checkbox')
+        if (t === 'metric' || t === 'milestone') {
+          try {
+            const res = await fetch(`${base}/api/goalops/key_results/${encodeURIComponent(r.id)}/derived`)
+            if (!res.ok) return 0
+            const d = (await res.json()) as { kr_type: string; score: number | null; latest_value: number | null }
+            if (d.kr_type === 'metric') return d.score != null ? d.score * 100 : 0
+            return d.latest_value != null ? d.latest_value : 0
+          } catch {
+            return 0
+          }
+        }
+        return r.is_completed ? 100 : 0
+      }),
+    )
+    const clamped = perKr.map((p) => Math.max(0, Math.min(100, p)))
+    const avg = clamped.reduce((a, b) => a + b, 0) / clamped.length
+    return Math.round(avg)
   } catch {
     return null
   }

@@ -35,12 +35,12 @@ GoalOps 是这个仓库里的目标 / 任务 / OKR 管理 SPA，前端 React + V
 ## 数据模型（PocketBase 集合）
 
 ```
-objectives ──┬── key_results       (1-N, cascade)
+objectives ──┬── key_results       (1-N, cascade) ── kr_checkins (1-N, cascade)
              ├── tasks             (1-N, cascade) ──── key_result (optional N-1)
              ├── blockers          (1-N, cascade)
              ├── deliverables      (1-N)
              └── core_documents    (1-N)
-members ────── owner / assignee / participant_ids  (relation)
+members ────── owner / assignee / participant_ids / contributors / author (relation)
 ```
 
 ### `objectives` — 关键字段
@@ -77,16 +77,41 @@ members ────── owner / assignee / participant_ids  (relation)
 | `estimate_hours` | number | |
 | `due_date` | date | |
 
-### `key_results` — 关键字段
+### `key_results` — 关键字段 **v1.0 加 metric/milestone**
 
 | 字段 | 类型 | 备注 |
 |---|---|---|
 | `objective` | relation | required，级联删除 |
 | `name` | text | KR 描述 |
-| `is_completed` | bool | Checkbox 型 KR |
+| `kr_type` | select | `metric` / `checkbox` / `milestone`，迁移后存量统一为 `checkbox` |
+| `is_completed` | bool | 仅 checkbox 类；metric / milestone 不再参与 objective 进度统计 |
+| `start_value` / `target_value` / `unit` / `direction` | metric only | hook 在 metric 类下强校验四个一起填 |
+| `contributors` | relation (multi) → members | KR 贡献者，前端 v1.0 只读展示 |
 | `owner` | relation → members | 可选 |
 | `note` | text | |
 | `sort_order` | int | 展示顺序 |
+
+派生字段（非存表）：`/api/goalops/key_results/{id}/derived` 返回 `latest_value / latest_confidence / latest_checkin_date / score`。MCP `key_results_get|list` 支持 `expand=derived` 透传该 endpoint。
+
+### `kr_checkins` — 关键字段 **v1.0 新增**
+
+KR 的时间点快照（现状/信心/聚焦）。
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| `key_result` | relation → key_results | required，级联删除 |
+| `checkin_date` | date | YYYY-MM-DD，**不能晚于今天**（hook 校验） |
+| `checkin_type` | select | `weekly` / `milestone` / `adhoc` |
+| `current_value` | number | 仅 metric KR 写入 |
+| `progress_percent` | number | 仅 milestone KR 写入，0–100 |
+| `is_completed` | bool | 仅 checkbox KR 写入 |
+| `confidence` | int | 1–10 |
+| `status_signal` | select | `on_track` / `at_risk` / `off_track`，未传时按 confidence 自动派生（≥7 / 4–6 / ≤3） |
+| `progress_note` | text | required |
+| `blockers_note` / `next_focus` | text | 可选 |
+| `author` | relation → members | required；前端默认 = KR.owner |
+
+校验 hook：`pb_hooks/kr_checkin_validation.pb.js`。通过 `e.requestInfo().body` 判断「用户是否显式传字段」，避开 PB number 字段默认 0 与「人填 0」无法区分的歧义。
 
 ### `blockers` — 关键字段
 
@@ -133,8 +158,15 @@ members ────── owner / assignee / participant_ids  (relation)
 - `predecessor_ids` 是 string 数组
 
 ### Key Results
-- `goalops_key_results_list / create / update / delete`
-- `update` 翻 `is_completed` 即可标记完成
+- `goalops_key_results_list / get / create / update / delete`
+- `update` 翻 `is_completed` 即可标记完成（仅 checkbox 类）
+- **v1.0 新增**：`kr_type / start_value / target_value / unit / direction / contributors` 字段；`expand=derived` 透传 `/api/goalops/key_results/:id/derived` 拼到响应里
+
+### KR Check-ins **v1.0**
+- `goalops_checkins_list / get / create / update / delete`
+- `list` 用 `key_result_id` 过滤，默认排序 `-checkin_date`
+- `create` 度量字段三选一：metric→`current_value`，checkbox→`is_completed`，milestone→`progress_percent`。混填后端会拒（400）
+- 未传 `status_signal` 时按 confidence 自动派生
 
 ### Blockers
 - `goalops_blockers_list / create / update / delete`
@@ -183,6 +215,25 @@ members ────── owner / assignee / participant_ids  (relation)
 goalops_key_results_update  → is_completed: true
 goalops_objectives_update   → progress_percent: <自己算>
 ```
+
+**v1.0 起进度算法**（前端 `recomputeObjectiveProgressFromKeyResults`）：
+- checkbox KR → `is_completed` 折 100 / 0
+- milestone KR → 最近一条 check-in 的 `progress_percent`（无则 0）
+- metric KR → derived `score * 100`（无则 0）
+
+每条已命名 KR 平均权重，取均值四舍五入。
+
+### 配方 5 · 录 KR check-in **v1.0**
+
+```text
+1. goalops_key_results_get  expand=derived           → 看现状（latest_value/score/confidence）
+2. goalops_checkins_create                            → 写一条快照
+3. （可选）goalops_objectives_update progress_percent  → 同步 objective 总进度
+```
+
+- metric KR 的 check-in 一定要带 `current_value`；混入 `is_completed/progress_percent` 会 400
+- `confidence` 1–10；不传 `status_signal` 时自动派生
+- `checkin_date` 必须 ≤ 今天
 
 ### 配方 4 · 阻塞排查
 
@@ -244,6 +295,20 @@ predecessor_ids ~ "tsk100000000001"       # JSON 列模糊匹配（"包含此 id
 ### 6. MCP tasks_update 清空字段
 - 显式传 `key_result: null` 或 `assignee: null` 才能清空（compactRecord 保留 null，丢 undefined）
 
+### 7. PB v0.23 中 number/bool 字段服务端默认 0/false，无法区分「人填 0」
+- 现象：metric KR 写 check-in 时未传 `current_value`，PB 静默存 0，hook 看到的 `record.get('current_value')` 也是 0
+- 解决：在 hook 里用 `e.requestInfo().body` 检查 key 是否被显式传入，再决定是否报错
+- 已应用于 `pb_hooks/kr_checkin_validation.pb.js` 与 `kr_type_validation.pb.js`
+
+### 8. PB hooks goja 引擎：顶层函数不会透出到 routerAdd / onXxx 回调闭包
+- 现象：`routerAdd('GET', ..., (e) => handle(e))` + 同文件 `function handle(e) { ... }` 会抛 `ReferenceError: handle is not defined`
+- 解决：把校验逻辑直接内联到回调函数体里；或用 `const fn = (e) => { ... }` + `onRecordCreateRequest(fn, ...)` 把命名函数声明为 const 表达式（这种闭包能透出）
+
+### 9. PB v0.23 起新建 collection 不再自动带 created/updated
+- 现象：`findRecordsByFilter(..., '-created', ...)` 抛 `invalid sort field "created"`
+- 解决：在迁移里显式 `new AutodateField({name:'created', onCreate:true})` + `new AutodateField({name:'updated', onCreate:true, onUpdate:true})`
+- 老存量记录的 `created/updated` 会为空字符串；只有新写入会自动填
+
 ---
 
 ## 文件指路
@@ -251,7 +316,9 @@ predecessor_ids ~ "tsk100000000001"       # JSON 列模糊匹配（"包含此 id
 | 想干什么 | 看哪里 |
 |---|---|
 | Schema 总览 | `backend/pocketbase/COLLECTIONS.md` |
-| MCP 工具实现 | `mcp/src/tools/{objectives,tasks,keyResults,blockers,nextActions}.ts` |
+| MCP 工具实现 | `mcp/src/tools/{objectives,tasks,keyResults,checkins,blockers,nextActions}.ts` |
+| Check-in 前端 | `src/features/checkins/{CheckinForm,CheckinTimeline,KRCheckinPanel,service}.{tsx,ts}` |
+| PB hooks（校验 + derived endpoint） | `backend/pocketbase/pb_hooks/kr_*.pb.js` |
 | MCP 入口 | `mcp/src/index.ts` |
 | PB client（前端） | `src/services/pocketbase.ts` |
 | PB client（MCP） | `mcp/src/pbClient.ts` |

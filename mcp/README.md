@@ -1,8 +1,9 @@
 # goalops-mcp
 
 MCP (Model Context Protocol) server that exposes GoalOps PocketBase
-collections — **objectives**, **tasks**, **key_results**, **blockers**, and
-the **next_actions** JSON field — as tools an LLM agent can call.
+collections — **objectives**, **tasks**, **key_results**, **kr_checkins**,
+**blockers**, and the **next_actions** JSON field — as tools an LLM agent
+can call.
 
 It connects to PocketBase over HTTP using the official
 [`pocketbase`](https://www.npmjs.com/package/pocketbase) JS SDK, so the server
@@ -100,10 +101,26 @@ All names are prefixed `goalops_` to avoid collisions with other MCP servers.
 
 ### Key Results
 
-- `goalops_key_results_list` — pass `objective_id` for the common case
-- `goalops_key_results_create`
-- `goalops_key_results_update` — flip `is_completed`, rename, reorder
-- `goalops_key_results_delete`
+- `goalops_key_results_list` — pass `objective_id` for the common case. `expand=derived` augments each item with `latest_value / latest_confidence / latest_checkin_date / score` from the latest check-in (proxies the PB endpoint).
+- `goalops_key_results_get` — single fetch; same `expand=derived` support
+- `goalops_key_results_create` — `kr_type` defaults to `checkbox`. For `metric`, `start_value / target_value / unit / direction` are required.
+- `goalops_key_results_update` — partial. Switching to `kr_type=metric` requires the four metric fields in the same call.
+- `goalops_key_results_delete` — cascades into kr_checkins
+
+### KR Check-ins **v1.0**
+
+Point-in-time snapshots of a KR (progress / confidence / next focus).
+
+- `goalops_checkins_list` — pass `key_result_id`. Default sort `-checkin_date`.
+- `goalops_checkins_get`
+- `goalops_checkins_create` — fields depend on KR type:
+  - metric KR → `current_value`
+  - checkbox KR → `is_completed`
+  - milestone KR → `progress_percent`
+  Server hook (`pb_hooks/kr_checkin_validation.pb.js`) enforces this strictly.
+  `status_signal` auto-derives from `confidence` (≥7 on_track, 4–6 at_risk, ≤3 off_track) unless explicitly set.
+- `goalops_checkins_update`
+- `goalops_checkins_delete`
 
 ### Blockers
 

@@ -62,17 +62,63 @@ export interface Objective {
 
 export type MemberStatus = 'active' | 'inactive'
 
-/** PRD: Checkbox 关键结果 */
+export type KRType = 'metric' | 'checkbox' | 'milestone'
+export type KRDirection = 'increase' | 'decrease'
+
+/** PRD: 关键结果（metric / checkbox / milestone 三类） */
 export interface KeyResult {
   id: string
   objectiveId: string
   name: string
+  /** 兼容旧字段；metric/milestone 不再用它推进度 */
   isCompleted: boolean
   ownerId?: string
   note?: string
   sortOrder?: number
   createdAt?: string
   updatedAt?: string
+  krType?: KRType
+  startValue?: number | null
+  targetValue?: number | null
+  unit?: string
+  direction?: KRDirection | null
+  contributorIds?: string[]
+}
+
+/** /api/goalops/key_results/:id/derived 返回结构 */
+export interface KRDerived {
+  key_result: string
+  kr_type: KRType
+  start_value: number | null
+  target_value: number | null
+  unit: string
+  direction: KRDirection | null
+  latest_value: number | null
+  latest_confidence: number | null
+  latest_checkin_date: string | null
+  score: number | null
+}
+
+export type CheckinType = 'weekly' | 'milestone' | 'adhoc'
+export type StatusSignal = 'on_track' | 'at_risk' | 'off_track'
+
+/** kr_checkins 单条记录 */
+export interface KRCheckin {
+  id: string
+  keyResultId: string
+  checkinDate: string
+  checkinType: CheckinType
+  currentValue?: number | null
+  progressPercent?: number | null
+  isCompleted?: boolean
+  confidence: number
+  statusSignal: StatusSignal
+  progressNote: string
+  blockersNote?: string
+  nextFocus?: string
+  authorId: string
+  created?: string
+  updated?: string
 }
 
 export interface Member {

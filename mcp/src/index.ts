@@ -9,6 +9,7 @@ import { registerTaskTools } from './tools/tasks.js'
 import { registerKeyResultTools } from './tools/keyResults.js'
 import { registerBlockerTools } from './tools/blockers.js'
 import { registerNextActionTools } from './tools/nextActions.js'
+import { registerCheckinTools } from './tools/checkins.js'
 
 /**
  * Build a fresh McpServer with all GoalOps tools registered.
@@ -24,6 +25,7 @@ function buildServer(): McpServer {
   registerKeyResultTools(server)
   registerBlockerTools(server)
   registerNextActionTools(server)
+  registerCheckinTools(server)
   return server
 }
 

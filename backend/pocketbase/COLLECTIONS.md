@@ -22,16 +22,53 @@
 
 ---
 
-## `key_results`（关键结果，Checkbox）**v0.3.3**
+## `key_results`（关键结果） **v0.3.3 / v1.0 metric**
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `objective` | relation | → `objectives`，必填，随目标级联删除 |
 | `name` | text | KR 描述 |
-| `is_completed` | bool | 是否完成 |
+| `kr_type` | select | **v1.0** `metric` / `checkbox` / `milestone`（迁移后存量统一回填 `checkbox`） |
+| `is_completed` | bool | 仅 checkbox 类用；metric / milestone 不再参与进度统计 |
+| `start_value` | number | 仅 metric：KR 设立时起点 |
+| `target_value` | number | 仅 metric：期末目标 |
+| `unit` | text | 仅 metric：单位（如 `%`、`ms`） |
+| `direction` | select | 仅 metric：`increase` / `decrease`（打分方向） |
+| `contributors` | relation (multi) | → `members`，KR 贡献者；前端本迭代只读展示 |
 | `owner` | relation | → `members`，可选 |
 | `note` | text | 备注 |
 | `sort_order` | number | 展示顺序（整数，可选） |
+
+约束（PB hook `pb_hooks/kr_type_validation.pb.js`）：
+- `kr_type` 必填且属于三类之一
+- `kr_type=metric` 时 `start_value / target_value / unit / direction` 必填
+
+派生字段（不存表，由 endpoint `/api/goalops/key_results/{id}/derived` 返回）：
+`latest_value / latest_confidence / latest_checkin_date / score`。
+
+---
+
+## `kr_checkins`（KR 周期快照） **v1.0**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `key_result` | relation | → `key_results`，必填，级联删除 |
+| `checkin_date` | date | 业务日期（YYYY-MM-DD），不能晚于今天 |
+| `checkin_type` | select | `weekly` / `milestone` / `adhoc` |
+| `current_value` | number | 仅 metric KR：当前值 |
+| `progress_percent` | number | 仅 milestone KR：0–100 |
+| `is_completed` | bool | 仅 checkbox KR：终态 |
+| `confidence` | number | 1–10 整数，对期末达成的主观信心 |
+| `status_signal` | select | `on_track` / `at_risk` / `off_track`，默认按 confidence 派生 |
+| `progress_note` | text | 必填：做了什么 / 数据是什么 |
+| `blockers_note` | text | 可选：本周阻塞（不升级为正式 blocker） |
+| `next_focus` | text | 可选：下周聚焦 |
+| `author` | relation | → `members`，提交人 |
+| `created` / `updated` | autodate | 自动填充 |
+
+索引：`(key_result, checkin_date DESC)`、`(key_result)`。
+
+类型一致性校验（`pb_hooks/kr_checkin_validation.pb.js`）：基于关联 KR 的 `kr_type` 强制度量字段三选一；检测「显式传值」通过 `e.requestInfo().body`，绕开 PB 数字字段服务端默认 0 的歧义。
 
 ---
 

@@ -19,6 +19,7 @@ export function ObjectiveDetailPage() {
   const [tasks, setTasks] = useState<RecordModel[]>([])
   const [blockers, setBlockers] = useState<RecordModel[]>([])
   const [keyResults, setKeyResults] = useState<RecordModel[]>([])
+  const [members, setMembers] = useState<Array<{ id: string; name: string }>>([])
   const [keyResultBusyId, setKeyResultBusyId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -30,7 +31,7 @@ export function ObjectiveDetailPage() {
       const silent = Boolean(opts?.silent)
       if (!silent) setLoading(true)
       try {
-        const [obj, taskList, blkList, krList] = await Promise.all([
+        const [obj, taskList, blkList, krList, memberList] = await Promise.all([
           pb.collection('objectives').getOne(id, { expand: 'owner' }),
           pb.collection('tasks').getFullList({
             filter: `objective="${id}"`,
@@ -46,6 +47,10 @@ export function ObjectiveDetailPage() {
             expand: 'owner',
             sort: 'sort_order,name',
           }),
+          pb.collection('members').getFullList({
+            sort: 'name',
+            batch: 500,
+          }),
         ])
 
         const severityRank: Record<string, number> = { high: 0, medium: 1, low: 2 }
@@ -58,12 +63,19 @@ export function ObjectiveDetailPage() {
         setTasks(taskList)
         setBlockers(blkList)
         setKeyResults(krList)
+        setMembers(
+          memberList.map((m) => ({
+            id: m.id,
+            name: String(m.name ?? ''),
+          })),
+        )
         setError(null)
       } catch (e) {
         setObjective(null)
         setTasks([])
         setBlockers([])
         setKeyResults([])
+        setMembers([])
         setError(e instanceof Error ? e.message : String(e))
       } finally {
         if (!silent) setLoading(false)
@@ -158,6 +170,7 @@ export function ObjectiveDetailPage() {
           tasks={tasks}
           blockers={blockers}
           keyResults={keyResults}
+          members={members}
           onToggleKeyResult={onToggleKeyResult}
           keyResultBusyId={keyResultBusyId}
           onDelete={onDelete}
