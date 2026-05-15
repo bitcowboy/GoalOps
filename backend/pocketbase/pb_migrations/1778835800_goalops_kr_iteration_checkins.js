@@ -53,7 +53,7 @@ migrate(
         new RelationField({
           name: 'contributors',
           required: false,
-          maxSelect: 0, // 0 = unlimited
+          maxSelect: 999, // PB v0.23 不把 0 当成 unlimited；用一个大数表示多选
           collectionId: members.id,
           cascadeDelete: false,
           presentable: false,
