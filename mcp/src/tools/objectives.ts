@@ -82,7 +82,7 @@ export function registerObjectiveTools(server: McpServer): void {
     {
       title: 'Create an objective',
       description:
-        'Create a new objective. `definition` is the merged plain-text description (multi-line; was summary + background). `owner` and `participant_ids` reference `members.id`.',
+        'Create a new objective. `definition` is the merged plain-text description (multi-line; was summary + background). `owner` references `members.id`.',
       inputSchema: {
         name: z.string().min(1),
         owner: z.string().min(1),
@@ -93,7 +93,6 @@ export function registerObjectiveTools(server: McpServer): void {
         due_date: z.string().optional().describe('YYYY-MM-DD'),
         progress_percent: z.number().min(0).max(100).optional(),
         out_of_scope: z.array(z.string()).optional(),
-        participant_ids: z.array(z.string()).optional(),
         risk_level: RISK.optional(),
         current_blockers_summary: z.string().optional(),
         display_code: z.string().optional(),
@@ -126,7 +125,6 @@ export function registerObjectiveTools(server: McpServer): void {
         due_date: z.string().optional(),
         progress_percent: z.number().min(0).max(100).optional(),
         out_of_scope: z.array(z.string()).optional(),
-        participant_ids: z.array(z.string()).optional(),
         risk_level: RISK.optional(),
         current_blockers_summary: z.string().optional(),
         display_code: z.string().optional(),

@@ -43,7 +43,6 @@ type ObjectiveDetailViewProps = {
   keyResultBusyId: string | null
   onCreateKeyResult: () => void
   onEditKeyResult: (kr: RecordModel) => void
-  onEditParticipants: () => void
   onDelete: () => void | Promise<void>
   deleting: boolean
 }
@@ -96,22 +95,6 @@ function numOrNull(v: unknown): number | null {
 function parseRelationIds(raw: unknown): string[] {
   if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === 'string' && Boolean(v))
   if (typeof raw === 'string' && raw.trim()) return raw.split(/[\s,]+/).filter(Boolean)
-  return []
-}
-
-/** PB JSON 字段 participant_ids：成员 id 数组（也可能是 null / 单字符串） */
-function parseIdArrayLoose(raw: unknown): string[] {
-  if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === 'string' && Boolean(v))
-  if (typeof raw === 'string') {
-    const t = raw.trim()
-    if (!t) return []
-    try {
-      const j = JSON.parse(t)
-      if (Array.isArray(j)) return j.filter((v): v is string => typeof v === 'string' && Boolean(v))
-    } catch {
-      return t.split(/[\s,]+/).filter(Boolean)
-    }
-  }
   return []
 }
 
@@ -347,7 +330,6 @@ export function ObjectiveDetailView({
   keyResultBusyId,
   onCreateKeyResult,
   onEditKeyResult,
-  onEditParticipants,
   onDelete,
   deleting,
 }: ObjectiveDetailViewProps) {
@@ -356,13 +338,6 @@ export function ObjectiveDetailView({
   const ownerTeam = owner ? String(owner.team ?? '') : ''
   const ownerColor = '#2563eb'
   const ownerInitials = initialsFromName(ownerName)
-  const ownerId = typeof obj.owner === 'string' ? (obj.owner as string) : ''
-
-  // 参与者：从 objectives.participant_ids 解析，匹配到加载好的 members
-  const participantIds = parseIdArrayLoose(obj.participant_ids).filter((id) => id !== ownerId)
-  const participants = participantIds
-    .map((id) => members.find((m) => m.id === id))
-    .filter((m): m is { id: string; name: string } => Boolean(m))
 
   const title = String(obj.name ?? '')
   const definitionText = editorToPlainText(String(obj.definition ?? '')).trim()
@@ -532,36 +507,6 @@ export function ObjectiveDetailView({
           </div>
         </MetricCard>
       </div>
-
-      <SectionCard
-        title="参与者"
-        action={
-          <button
-            type="button"
-            onClick={onEditParticipants}
-            className="inline-flex items-center gap-1 rounded-md border border-[var(--goalops-border)] bg-white px-2 py-1 text-xs font-medium text-[var(--goalops-text-muted)] hover:bg-slate-50"
-          >
-            <Pencil className="size-3.5" />
-            编辑
-          </button>
-        }
-      >
-        <div className="space-y-2">
-          <div className="text-xs text-[var(--goalops-text-muted)]">
-            负责人之外的协作角色（享有知情权，不算单一责任人）
-          </div>
-          {participants.length === 0 ? (
-            <p className="text-sm text-[var(--goalops-text-subtle)]">暂未指定。点击右上「编辑」添加。</p>
-          ) : (
-            <div className="flex flex-wrap items-center gap-2">
-              {participants.map((m) => (
-                <MemberPill key={m.id} name={m.name} />
-              ))}
-              <span className="text-[11px] text-[var(--goalops-text-subtle)]">共 {participants.length} 人</span>
-            </div>
-          )}
-        </div>
-      </SectionCard>
 
       <SectionCard
         title="关键结果"

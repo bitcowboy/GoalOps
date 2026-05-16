@@ -82,7 +82,6 @@
 | `status` | select | 含 `draft`（草稿）、`not_started` / `in_progress` / … |
 | `priority` | select | 如：`P0`–`P3` |
 | `owner` | relation | → `members`（单选） |
-| `participant_ids` | json | 参与成员 id 数组（可选） |
 | `risk_level` | select | 风险：`low` / `medium` / `high` |
 | `current_blockers_summary` | text | 卡点摘要（创建表单） |
 | `draft_deliverables` | json | 历史字段，当前最小化 OKR 表单不展示 |

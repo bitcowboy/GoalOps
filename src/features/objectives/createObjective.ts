@@ -215,8 +215,6 @@ export type CreateObjectiveInput = {
   start_date: string
   due_date: string
   progress_percent: number | null
-  /** Member record ids */
-  participant_ids: string[]
   /** objectives.risk_level: low | medium | high */
   risk_level: string
   /** objectives.current_blockers_summary */
@@ -282,7 +280,6 @@ export function objectiveDraftToCreateInput(draft: ObjectiveFormDraftFields): Cr
     start_date: draft.start_date,
     due_date: draft.due_date,
     progress_percent,
-    participant_ids: [...draft.participant_ids],
     risk_level: draft.risk_level,
     current_blockers_summary: draft.current_blockers_summary,
     action_suggestions_text: draft.action_suggestions_text,
@@ -305,12 +302,6 @@ export function normalizeObjectiveLinesField(raw: string): string[] {
 
 function linesFieldFromRecord(record: RecordModel, key: 'success_criteria' | 'out_of_scope'): string {
   return parseStringArray(record[key]).join('\n')
-}
-
-function parseParticipantIds(record: RecordModel): string[] {
-  const raw = record.participant_ids
-  if (!Array.isArray(raw)) return []
-  return raw.filter((x): x is string => typeof x === 'string' && !!x.trim())
 }
 
 function isDraftDeliverable(x: unknown): x is ObjectiveDraftDeliverableRow {
@@ -388,7 +379,6 @@ export function objectiveRecordToFormDraft(record: RecordModel): ObjectiveFormDr
     start_date: pbValueToDateInput(record.start_date),
     due_date: pbValueToDateInput(record.due_date),
     progress_percent: String(clampPercent(record.progress_percent ?? 0)),
-    participant_ids: parseParticipantIds(record),
     risk_level: String(record.risk_level ?? '').trim(),
     current_blockers_summary: String(record.current_blockers_summary ?? ''),
     action_suggestions_text: parseNextActionsToLines(record),
@@ -547,9 +537,6 @@ function buildObjectiveWritePayload(input: CreateObjectiveInput): Record<string,
   const outLines = normalizeObjectiveLinesField(input.out_of_scope)
   body.success_criteria = []
   body.out_of_scope = outLines.length > 0 ? outLines : []
-
-  const participantIds = input.participant_ids.map((id) => id.trim()).filter(Boolean)
-  body.participant_ids = participantIds.length > 0 ? participantIds : []
 
   const rk = input.risk_level.trim()
   if (rk) body.risk_level = rk

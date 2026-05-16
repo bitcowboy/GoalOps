@@ -40,7 +40,7 @@ objectives ──┬── key_results       (1-N, cascade) ── kr_checkins (
              ├── blockers          (1-N, cascade)
              ├── deliverables      (1-N)
              └── core_documents    (1-N)
-members ────── owner / assignee / participant_ids / contributors / author (relation)
+members ────── owner / assignee / contributors / author (relation)
 ```
 
 ### `objectives` — 关键字段
@@ -55,7 +55,6 @@ members ────── owner / assignee / participant_ids / contributors / a
 | `start_date` / `due_date` | date | YYYY-MM-DD 输入 |
 | `progress_percent` | number | 0–100 |
 | `owner` | relation → members | 单选 |
-| `participant_ids` | json | 成员 id 数组 |
 | `out_of_scope` | json | 字符串数组 |
 | `current_blockers_summary` | text(20000) | 卡点摘要（与 blockers 表互补） |
 | `phase_timeline` | json | 阶段时间线对象数组，**MCP update 不暴露** |
@@ -146,8 +145,8 @@ KR 的时间点快照（现状/信心/聚焦）。
 ### Objectives
 - `goalops_objectives_list` — `filter` / `sort` / `limit` / `expandOwner`
 - `goalops_objectives_get` — `id`、可选 `expandOwner`
-- `goalops_objectives_create` — `name`+`owner` 必填，含 `definition / start_date / due_date / progress_percent / out_of_scope / participant_ids / risk_level / current_blockers_summary / display_code`
-- `goalops_objectives_update` — **仅暴露以下字段**：`name / definition / display_code / due_date / start_date / progress_percent / status / priority / risk_level / owner / participant_ids / out_of_scope / current_blockers_summary`
+- `goalops_objectives_create` — `name`+`owner` 必填，含 `definition / start_date / due_date / progress_percent / out_of_scope / risk_level / current_blockers_summary / display_code`
+- `goalops_objectives_update` — **仅暴露以下字段**：`name / definition / display_code / due_date / start_date / progress_percent / status / priority / risk_level / owner / out_of_scope / current_blockers_summary`
 - `goalops_objectives_delete` — 级联
 
 > ⚠️ **`phase_timeline` / `success_criteria` / `next_actions` 不在 update 里**。前两者必须通过 PB Admin UI 手改；`next_actions` 用下面的专用工具。
