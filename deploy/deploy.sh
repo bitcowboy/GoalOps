@@ -59,6 +59,17 @@ if [[ -z "${SKIP_MCP:-}" ]]; then
 	rsync -avz --delete \
 		"$REPO_ROOT/backend/pocketbase/pb_migrations/" \
 		"$REMOTE:$REMOTE_ROOT/pocketbase/pb_migrations/"
+
+	# pb_hooks/ 可能不存在（首次部署或没有 hook 的版本），用 mkdir 兜底；--delete 让被删的 hook 在服务器侧也清掉
+	say "Rsyncing pb_hooks/ -> $REMOTE:$REMOTE_ROOT/pocketbase/pb_hooks/"
+	ssh "$REMOTE" "mkdir -p '$REMOTE_ROOT/pocketbase/pb_hooks'"
+	if [[ -d "$REPO_ROOT/backend/pocketbase/pb_hooks" ]]; then
+		rsync -avz --delete \
+			"$REPO_ROOT/backend/pocketbase/pb_hooks/" \
+			"$REMOTE:$REMOTE_ROOT/pocketbase/pb_hooks/"
+	else
+		say "(no local pb_hooks/ — leaving remote untouched)"
+	fi
 fi
 
 # --- 4. remote build + restart ----------------------------------------------

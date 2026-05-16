@@ -11,7 +11,7 @@
 
   Pipeline:
     1. npm run build                              (skip with -SkipFrontend)
-    2. Pack dist/ + mcp/ + pb_migrations/ into local tarballs
+    2. Pack dist/ + mcp/ + pb_migrations/ + pb_hooks/ into local tarballs
     3. scp tarballs + remote bootstrap script to /tmp on the server
     4. ssh + bash: atomic swap dist, unpack mcp, npm ci+build, pb migrate up,
        systemctl restart both services
@@ -119,7 +119,7 @@ try {
 	}
 
 	# --- 2. pack tarballs -----------------------------------------------------
-	$distTar = $null; $mcpTar = $null; $migTar = $null
+	$distTar = $null; $mcpTar = $null; $migTar = $null; $hooksTar = $null
 
 	if (-not $SkipFrontend) {
 		$distTar = New-TempPath '-dist.tar.gz'
@@ -137,12 +137,20 @@ try {
 		Say "Packing backend/pocketbase/pb_migrations/"
 		New-Tarball -Output $migTar `
 			-BaseDir (Join-Path $RepoRoot 'backend/pocketbase/pb_migrations')
+
+		$hooksDir = Join-Path $RepoRoot 'backend/pocketbase/pb_hooks'
+		if (Test-Path $hooksDir) {
+			$hooksTar = New-TempPath '-hooks.tar.gz'
+			Say "Packing backend/pocketbase/pb_hooks/"
+			New-Tarball -Output $hooksTar -BaseDir $hooksDir
+		}
 	}
 
 	# --- 3. upload artifacts --------------------------------------------------
-	if ($distTar) { Say 'scp dist tarball'; Send-File $distTar '/tmp/goalops-dist.tar.gz' }
-	if ($mcpTar)  { Say 'scp mcp tarball';  Send-File $mcpTar  '/tmp/goalops-mcp.tar.gz' }
-	if ($migTar)  { Say 'scp migrations tarball'; Send-File $migTar '/tmp/goalops-migrations.tar.gz' }
+	if ($distTar)  { Say 'scp dist tarball'; Send-File $distTar '/tmp/goalops-dist.tar.gz' }
+	if ($mcpTar)   { Say 'scp mcp tarball';  Send-File $mcpTar  '/tmp/goalops-mcp.tar.gz' }
+	if ($migTar)   { Say 'scp migrations tarball'; Send-File $migTar '/tmp/goalops-migrations.tar.gz' }
+	if ($hooksTar) { Say 'scp hooks tarball';      Send-File $hooksTar '/tmp/goalops-hooks.tar.gz' }
 
 	# --- 4. remote script -----------------------------------------------------
 	# PowerShell expands $RemoteWeb / $RemoteRoot / $NpmBin / $SkipMigrate
@@ -182,6 +190,16 @@ if [ -f /tmp/goalops-migrations.tar.gz ]; then
 	sudo tar xzf /tmp/goalops-migrations.tar.gz -C $RemoteRoot/pocketbase/pb_migrations
 	sudo chown -R goalops:goalops $RemoteRoot/pocketbase/pb_migrations
 	rm -f /tmp/goalops-migrations.tar.gz
+fi
+
+# --- 4c'. hooks -------------------------------------------------------------
+if [ -f /tmp/goalops-hooks.tar.gz ]; then
+	echo "==> Unpacking pb_hooks/"
+	sudo rm -rf $RemoteRoot/pocketbase/pb_hooks
+	sudo mkdir -p $RemoteRoot/pocketbase/pb_hooks
+	sudo tar xzf /tmp/goalops-hooks.tar.gz -C $RemoteRoot/pocketbase/pb_hooks
+	sudo chown -R goalops:goalops $RemoteRoot/pocketbase/pb_hooks
+	rm -f /tmp/goalops-hooks.tar.gz
 fi
 
 # --- 4d. npm install + tsc build (only if mcp was pushed) --------------------
