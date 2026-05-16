@@ -16,7 +16,7 @@ const navActive =
 
 export function AppLayout() {
   return (
-    <div className="flex min-h-dvh bg-[var(--goalops-bg)] text-[var(--goalops-text)]">
+    <div className="flex h-dvh overflow-hidden bg-[var(--goalops-bg)] text-[var(--goalops-text)]">
       <aside className="flex w-[232px] shrink-0 flex-col border-r border-[var(--goalops-border)] bg-[var(--goalops-surface)]">
         <div className="flex items-center gap-2.5 border-b border-[var(--goalops-border)] px-4 py-5">
           <span className="flex size-9 items-center justify-center rounded-xl bg-slate-900 text-white">
@@ -24,7 +24,7 @@ export function AppLayout() {
           </span>
           <span className="text-lg font-semibold tracking-tight">GoalOps</span>
         </div>
-        <nav className="flex flex-1 flex-col gap-0.5 p-3">
+        <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-3">
           <NavLink to="/objectives" className={({ isActive }) => `${navRow} ${isActive ? navActive : ''}`}>
             <Target className="size-[18px] shrink-0 opacity-80" />
             目标
@@ -54,8 +54,8 @@ export function AppLayout() {
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <main className="flex-1 overflow-auto px-6 py-6">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <main className="min-h-0 flex-1 overflow-auto px-6 py-6">
           <div className="mx-auto max-w-[1400px]">
             <Outlet />
           </div>
