@@ -82,6 +82,22 @@ function relationId(raw: unknown): string {
   return ''
 }
 
+/** objectives.participant_ids 是 JSON 列：可能是 string[]、单字符串或 null */
+function parseParticipantIds(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === 'string' && Boolean(v))
+  if (typeof raw === 'string') {
+    const t = raw.trim()
+    if (!t) return []
+    try {
+      const j = JSON.parse(t)
+      if (Array.isArray(j)) return j.filter((v): v is string => typeof v === 'string' && Boolean(v))
+    } catch {
+      return t.split(/[\s,]+/).filter(Boolean)
+    }
+  }
+  return []
+}
+
 function isActiveTask(status: string): boolean {
   return status !== '' && status !== 'done'
 }
@@ -193,11 +209,23 @@ export async function fetchPeopleBoard(): Promise<PeopleBoardPayload> {
         mainObjectiveProgress = obj ? Math.round(num(obj, 'progress_percent')) : 0
       }
     } else {
+      // 无任务时的 fallback：先看自己 owner 的未完成目标，再 fallback 到 participant
+      const isLive = (o: RecordModel) =>
+        str(o, 'status') !== 'done' && str(o, 'status') !== 'cancelled'
       const owned = (objectiveRecordsRaw as RecordModel[]).filter(
-        (o) => relationId(o.owner) === memberId && str(o, 'status') !== 'done' && str(o, 'status') !== 'cancelled',
+        (o) => relationId(o.owner) === memberId && isLive(o),
       )
       owned.sort((a, b) => priorityRank(str(a, 'priority')) - priorityRank(str(b, 'priority')))
-      const obj = owned[0]
+      let obj: RecordModel | undefined = owned[0]
+      if (!obj) {
+        const participated = (objectiveRecordsRaw as RecordModel[]).filter((o) => {
+          if (!isLive(o)) return false
+          if (relationId(o.owner) === memberId) return false
+          return parseParticipantIds(o.participant_ids).includes(memberId)
+        })
+        participated.sort((a, b) => priorityRank(str(a, 'priority')) - priorityRank(str(b, 'priority')))
+        obj = participated[0]
+      }
       if (obj) {
         mainObjectiveId = obj.id
         mainObjectiveName = str(obj, 'name')
