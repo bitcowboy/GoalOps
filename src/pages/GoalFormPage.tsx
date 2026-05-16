@@ -530,6 +530,53 @@ export function GoalFormPage() {
                   )}
                 </select>
               </div>
+              <div className="sm:col-span-2">
+                <span className={labelCls}>
+                  参与者
+                  <span className="ml-1 text-[10px] font-normal text-[var(--goalops-text-subtle)]">
+                    · 负责人之外的协作角色，多选
+                  </span>
+                </span>
+                {members.length <= 1 ? (
+                  <p className="mt-1.5 text-xs text-[var(--goalops-text-subtle)]">
+                    {membersLoading ? '加载中…' : '可选成员不足（除负责人外暂无成员）'}
+                  </p>
+                ) : (
+                  <div className="mt-1.5 max-h-44 overflow-y-auto rounded-lg border border-[var(--goalops-border)] bg-white p-2">
+                    <ul className="space-y-1">
+                      {members
+                        .filter((m) => m.id !== form.owner)
+                        .map((m) => {
+                          const checked = form.participant_ids.includes(m.id)
+                          return (
+                            <li key={m.id}>
+                              <label className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-slate-50">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    const set = new Set(form.participant_ids)
+                                    if (e.target.checked) set.add(m.id)
+                                    else set.delete(m.id)
+                                    patch('participant_ids', Array.from(set))
+                                  }}
+                                  className="size-3.5 rounded border-[var(--goalops-border)] text-[var(--goalops-primary)]"
+                                  disabled={pageBusy}
+                                />
+                                <span>{m.name}</span>
+                              </label>
+                            </li>
+                          )
+                        })}
+                    </ul>
+                  </div>
+                )}
+                {form.participant_ids.length > 0 ? (
+                  <p className="mt-1 text-[11px] text-[var(--goalops-text-muted)]">
+                    已选 {form.participant_ids.filter((id) => id !== form.owner).length} 人
+                  </p>
+                ) : null}
+              </div>
             </div>
           </SectionCard>
 

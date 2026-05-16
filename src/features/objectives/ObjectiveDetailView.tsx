@@ -43,6 +43,7 @@ type ObjectiveDetailViewProps = {
   keyResultBusyId: string | null
   onCreateKeyResult: () => void
   onEditKeyResult: (kr: RecordModel) => void
+  onEditParticipants: () => void
   onDelete: () => void | Promise<void>
   deleting: boolean
 }
@@ -91,6 +92,41 @@ function numOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+/** PB relation field (multi) 可能返回 string[] 或单值 string 或空串，都归一成 id[] */
+function parseRelationIds(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === 'string' && Boolean(v))
+  if (typeof raw === 'string' && raw.trim()) return raw.split(/[\s,]+/).filter(Boolean)
+  return []
+}
+
+/** PB JSON 字段 participant_ids：成员 id 数组（也可能是 null / 单字符串） */
+function parseIdArrayLoose(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === 'string' && Boolean(v))
+  if (typeof raw === 'string') {
+    const t = raw.trim()
+    if (!t) return []
+    try {
+      const j = JSON.parse(t)
+      if (Array.isArray(j)) return j.filter((v): v is string => typeof v === 'string' && Boolean(v))
+    } catch {
+      return t.split(/[\s,]+/).filter(Boolean)
+    }
+  }
+  return []
+}
+
+function MemberPill({ name }: { name: string }) {
+  const initials = name.slice(0, 2)
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--goalops-border)] bg-white px-2 py-0.5 text-[11px] text-[var(--goalops-text-muted)]">
+      <span className="inline-flex size-4 items-center justify-center rounded-full bg-slate-200 text-[9px] font-semibold text-[var(--goalops-text-muted)]">
+        {initials}
+      </span>
+      {name}
+    </span>
+  )
+}
+
 function KeyResultRow({
   kr,
   members,
@@ -117,6 +153,10 @@ function KeyResultRow({
   const ownerKr = kr.expand?.owner as RecordModel | undefined
   const krOwnerNm = ownerKr ? String(ownerKr.name ?? '').trim() : ''
   const note = String((kr as RecordModel & { note?: unknown }).note ?? '').trim()
+  const contributorIds = parseRelationIds(kr.contributors)
+  const contributors = contributorIds
+    .map((id) => members.find((m) => m.id === id))
+    .filter((m): m is { id: string; name: string } => Boolean(m))
 
   const startVal = numOrNull(kr.start_value)
   const targetVal = numOrNull(kr.target_value)
@@ -174,6 +214,14 @@ function KeyResultRow({
             ) : null}
             {krOwnerNm ? (
               <div className="mt-1 text-xs text-[var(--goalops-text-muted)]">KR 负责人 · {krOwnerNm}</div>
+            ) : null}
+            {contributors.length > 0 ? (
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] text-[var(--goalops-text-subtle)]">贡献者</span>
+                {contributors.map((m) => (
+                  <MemberPill key={m.id} name={m.name} />
+                ))}
+              </div>
             ) : null}
             {note ? (
               <div className="mt-1 text-xs leading-relaxed text-[var(--goalops-text-muted)]">{note}</div>
@@ -299,6 +347,7 @@ export function ObjectiveDetailView({
   keyResultBusyId,
   onCreateKeyResult,
   onEditKeyResult,
+  onEditParticipants,
   onDelete,
   deleting,
 }: ObjectiveDetailViewProps) {
@@ -307,6 +356,13 @@ export function ObjectiveDetailView({
   const ownerTeam = owner ? String(owner.team ?? '') : ''
   const ownerColor = '#2563eb'
   const ownerInitials = initialsFromName(ownerName)
+  const ownerId = typeof obj.owner === 'string' ? (obj.owner as string) : ''
+
+  // 参与者：从 objectives.participant_ids 解析，匹配到加载好的 members
+  const participantIds = parseIdArrayLoose(obj.participant_ids).filter((id) => id !== ownerId)
+  const participants = participantIds
+    .map((id) => members.find((m) => m.id === id))
+    .filter((m): m is { id: string; name: string } => Boolean(m))
 
   const title = String(obj.name ?? '')
   const definitionText = editorToPlainText(String(obj.definition ?? '')).trim()
@@ -476,6 +532,36 @@ export function ObjectiveDetailView({
           </div>
         </MetricCard>
       </div>
+
+      <SectionCard
+        title="参与者"
+        action={
+          <button
+            type="button"
+            onClick={onEditParticipants}
+            className="inline-flex items-center gap-1 rounded-md border border-[var(--goalops-border)] bg-white px-2 py-1 text-xs font-medium text-[var(--goalops-text-muted)] hover:bg-slate-50"
+          >
+            <Pencil className="size-3.5" />
+            编辑
+          </button>
+        }
+      >
+        <div className="space-y-2">
+          <div className="text-xs text-[var(--goalops-text-muted)]">
+            负责人之外的协作角色（享有知情权，不算单一责任人）
+          </div>
+          {participants.length === 0 ? (
+            <p className="text-sm text-[var(--goalops-text-subtle)]">暂未指定。点击右上「编辑」添加。</p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              {participants.map((m) => (
+                <MemberPill key={m.id} name={m.name} />
+              ))}
+              <span className="text-[11px] text-[var(--goalops-text-subtle)]">共 {participants.length} 人</span>
+            </div>
+          )}
+        </div>
+      </SectionCard>
 
       <SectionCard
         title="关键结果"

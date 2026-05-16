@@ -5,6 +5,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ObjectiveDetailView } from '@/features/objectives'
 import { clampPercent } from '@/features/objectives/objectiveDetailUtils'
 import { recomputeObjectiveProgressFromKeyResults } from '@/features/objectives/createObjective'
+import { ParticipantsForm } from '@/features/objectives/ParticipantsForm'
 import { KRForm } from '@/features/keyResults'
 import { pb } from '@/services/pocketbase'
 
@@ -27,6 +28,7 @@ export function ObjectiveDetailPage() {
   const [loading, setLoading] = useState(true)
   /** KR modal state. `kr === null` 表示新建；`kr === RecordModel` 表示编辑 */
   const [krFormOpen, setKrFormOpen] = useState<{ kr: RecordModel | null } | null>(null)
+  const [participantsOpen, setParticipantsOpen] = useState(false)
 
   const loadDetail = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -127,6 +129,10 @@ export function ObjectiveDetailPage() {
     setKrFormOpen({ kr })
   }, [])
 
+  const onEditParticipants = useCallback(() => {
+    setParticipantsOpen(true)
+  }, [])
+
   const afterKRChange = useCallback(async () => {
     setKrFormOpen(null)
     if (!id) return
@@ -201,6 +207,7 @@ export function ObjectiveDetailPage() {
           keyResultBusyId={keyResultBusyId}
           onCreateKeyResult={onCreateKeyResult}
           onEditKeyResult={onEditKeyResult}
+          onEditParticipants={onEditParticipants}
           onDelete={onDelete}
           deleting={deleting}
         />
@@ -216,6 +223,35 @@ export function ObjectiveDetailPage() {
           onCancel={() => setKrFormOpen(null)}
         />
       ) : null}
+
+      {participantsOpen && objective ? (
+        <ParticipantsForm
+          objectiveId={id}
+          members={members}
+          ownerId={typeof objective.owner === 'string' ? (objective.owner as string) : ''}
+          initialIds={parseParticipantIdsLoose(objective.participant_ids)}
+          onSuccess={() => {
+            setParticipantsOpen(false)
+            void loadDetail({ silent: true })
+          }}
+          onCancel={() => setParticipantsOpen(false)}
+        />
+      ) : null}
     </div>
   )
+}
+
+function parseParticipantIdsLoose(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === 'string' && Boolean(v))
+  if (typeof raw === 'string') {
+    const t = raw.trim()
+    if (!t) return []
+    try {
+      const j = JSON.parse(t)
+      if (Array.isArray(j)) return j.filter((v): v is string => typeof v === 'string' && Boolean(v))
+    } catch {
+      return t.split(/[\s,]+/).filter(Boolean)
+    }
+  }
+  return []
 }
